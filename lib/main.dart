@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
@@ -51,19 +52,22 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  AcccessService service = AcccessService();
+  AccessService service = AccessService();
 
   int? textureId;
   int cameraIndex = 1;
-  int abortFrames = 0;
+  int stateCounter = 0;
 
   double aheight = 0, awidth = 0;
   double imgHeight = 0, imgWidth = 0;
   double heightDif = 0, widthDif = 0;
-  double heightPercent = 0.1, widthPercent = 0.1;
+  double heightPercent = 0.4, widthPercent = 0.3;
+  double frameRate = 30;
+  double maxFrames = 10000;
 
   Size? imageSize;
   Size? viewportSize;
+  Size? modifiedViewport;
 
   var hController;
 
@@ -76,8 +80,10 @@ class _MyHomePageState extends State<MyHomePage> {
 
   String path = '';
 
+  Offset? centerPoint = Offset(0, 0);
   Offset? referencePoint = Offset(0, 0);
-  Offset? prevCenterPoint = Offset(0, 0);
+  Offset? prevReferencePoint = Offset(0, 0);
+  Offset? startingPoint = Offset(0, 0);
 
   Rect? handRect = Rect.fromLTRB(0, 0, 0, 0);
 
@@ -86,7 +92,8 @@ class _MyHomePageState extends State<MyHomePage> {
   List<int> fingerLast = [4, 8, 12, 16, 20];
   List<int> fingerSecondLast = [3, 7, 11, 15, 19];
 
-  HandState handState = HandState.NotTracking;
+  HandState prevState = HandState.NoData;
+  HandState handState = HandState.NoData;
 
   final keyCustomPaint = GlobalKey();
 
@@ -94,17 +101,27 @@ class _MyHomePageState extends State<MyHomePage> {
 
   late Directory appDocDir;
 
+  int cnt = 0;
+
+  Timer? timer;
+  Stopwatch stopwatch = Stopwatch();
+
   @override
   void initState() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
 
     initApp();
 
+    timer = Timer.periodic(Duration(seconds: 1), (timer) {
+      cnt = 0;
+    });
+
     super.initState();
   }
 
   @override
   void dispose() {
+    service.stop();
     engine!.release();
     super.dispose();
   }
@@ -117,74 +134,84 @@ class _MyHomePageState extends State<MyHomePage> {
     aheight = query.size.height;
     awidth = query.size.width;
 
-    return Scaffold(
-      body: Container(
-        child: loading
-            ? Center(
-                child: CircularProgressIndicator(
-                  color: Colors.black,
+    return WillPopScope(
+      onWillPop: () async {
+        if (Navigator.of(context).canPop()) {
+          return Future.value(true);
+        } else {
+          AccessService.platform.invokeMethod("sendToBackground");
+          return Future.value(false);
+        }
+      },
+      child: Scaffold(
+        body: Container(
+          child: loading
+              ? Center(
+                  child: CircularProgressIndicator(
+                    color: Colors.black,
+                  ),
+                )
+              : Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Align(
+                      alignment: Alignment.center,
+                      child: SizedBox(
+                        height: aheight,
+                        width: awidth,
+                        child: Processing(
+                          sketch: sketch,
+                        ),
+                      ),
+                    ),
+                    MLBodyLens(
+                      textureId: textureId,
+                      //width: awidth,
+                      //height: aheight,
+                    ),
+                    Align(
+                      alignment: Alignment.center,
+                      child: SizedBox(
+                        height: aheight,
+                        width: awidth,
+                        child: CustomPaint(
+                          painter: MyPainter(
+                            landmarks: landmarks,
+                            centerPoint: referencePoint,
+                            prevCenterPoint: prevReferencePoint,
+                            handRect: handRect,
+                            handState: handState,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.topLeft,
+                      child: Padding(
+                        padding: EdgeInsets.only(left: 10, top: 10),
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(5),
+                            color: handState == HandState.Press
+                                ? Colors.green
+                                : Colors.orange,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Text(handState.name)
+                  ],
                 ),
-              )
-            : Stack(
-                alignment: Alignment.center,
-                children: [
-                  Align(
-                    alignment: Alignment.center,
-                    child: SizedBox(
-                      height: aheight,
-                      width: awidth,
-                      child: Processing(
-                        sketch: sketch,
-                      ),
-                    ),
-                  ),
-                  MLBodyLens(
-                    textureId: textureId,
-                    width: awidth,
-                    height: aheight,
-                  ),
-                  Align(
-                    alignment: Alignment.center,
-                    child: SizedBox(
-                      height: aheight,
-                      width: awidth,
-                      child: CustomPaint(
-                        painter: MyPainter(
-                          landmarks: landmarks,
-                          centerPoint: referencePoint,
-                          prevCenterPoint: prevCenterPoint,
-                          handRect: handRect,
-                          handState: handState,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Align(
-                    alignment: Alignment.topLeft,
-                    child: Padding(
-                      padding: EdgeInsets.only(left: 10, top: 10),
-                      child: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(5),
-                          color: handState == HandState.NotTracking
-                              ? Colors.orange
-                              : Colors.green,
-                        ),
-                      ),
-                    ),
-                  ),
-                  // Text(handState.name)
-                ],
-              ),
+        ),
       ),
     );
   }
 
   void initApp() async {
     await getDirectory();
-    //await service.init(awidth, aheight);
+    await service.init(awidth, aheight);
     await initStream();
     initSketch();
     loading = false;
@@ -201,9 +228,9 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> initStream() async {
     try {
       hController = MLBodyLensController(
-        applyFps: 30,
+        applyFps: frameRate,
         transaction: BodyTransaction.hand,
-        lensType: MLBodyLensController.backLens,
+        lensType: MLBodyLensController.frontLens,
       );
       engine = MLBodyLensEngine(controller: hController);
       engine!.setTransactor(onTransaction);
@@ -217,10 +244,9 @@ class _MyHomePageState extends State<MyHomePage> {
 
       widthDif = (viewportSize!.width - imgWidth) / 2;
       heightDif = (viewportSize!.height - imgHeight) / 2;
-      viewportSize = Size(imgWidth, imgHeight);
-    }
-    catch(e){
-      int i=0;
+      modifiedViewport = Size(imgWidth, imgHeight);
+    } catch (e) {
+      int i = 0;
     }
   }
 
@@ -231,22 +257,22 @@ class _MyHomePageState extends State<MyHomePage> {
         sketch.background(color: Colors.white);
       },
       draw: (sketch) async {
-        if (handState == HandState.NotTracking)
+        if (handState == HandState.NoData) {
           sketch.background(color: Colors.white);
+          return;
+        }
         sketch.stroke(color: Colors.yellow);
         sketch.strokeWeight(3);
         /* sketch.line(
                       Offset(130, 100),
                       Offset(100, 30),
                     );*/
-        if (handState == HandState.Tracking) {
-          if (prevCenterPoint != null) {
-            sketch.line(
-              prevCenterPoint!,
-              referencePoint!,
-            );
-            prevCenterPoint = Offset(referencePoint!.dx, referencePoint!.dy);
-          }
+        if (prevReferencePoint != null) {
+          sketch.line(
+            prevReferencePoint!,
+            referencePoint!,
+          );
+          prevReferencePoint = Offset(referencePoint!.dx, referencePoint!.dy);
         }
       },
     );
@@ -258,31 +284,149 @@ class _MyHomePageState extends State<MyHomePage> {
     handRect = null;
     landmarks.clear();
 
+    cnt++;
+
     double normalSize = min(aheight, awidth);
+    bool hasData = false;
+
+    prevState = HandState.values
+        .firstWhere((element) => element.name == handState.name);
 
     if (result.length == 0 || result[0].handKeyPoints.length != 21) {
-      if (handState == HandState.Tracking) {
-        abortFrames++;
-        if (abortFrames == 20) {
-          prevCenterPoint = null;
-          handState = HandState.NotTracking;
-          referencePoint = null;
-        }
+      /*if (handState == HandState.Tracking) {
+
       } else {
         service.removeOverlay();
-      }
-
-      setState(() {});
-      return;
+      }*/
+    } else {
+      computeData(result);
+      service.drawHandLocation(referencePoint ?? Offset(0, 0), handState);
+      hasData = true;
     }
-    abortFrames = 0;
-    int startIndex = 0;
 
-    computeData(result);
+    switch (handState) {
+      ////
 
-    service.drawHandLocation(referencePoint ?? Offset(0, 0));
+      case HandState.Tracking:
+        if (!hasData) {
+          handState = HandState.Unsure;
+          break;
+        }
 
-    detect();
+        if (isLockGesture()) {
+          handState = HandState.Locking;
+          break;
+        }
+
+        break;
+
+      ////
+
+      case HandState.Locking:
+        if (!hasData) {
+          handState = HandState.Unsure;
+          break;
+        }
+        double nr = transitionDuration[HandState.Press]! * frameRate;
+        if (stateCounter.toDouble() >=
+            transitionDuration[HandState.Press]! * frameRate) {
+          handState = HandState.Press;
+          break;
+        }
+
+        if (isFreeGesture()) {
+          handState = HandState.Tracking;
+          break;
+        }
+
+        break;
+
+      ////
+
+      case HandState.Unsure:
+        if (stateCounter.toDouble() >=
+            transitionDuration[HandState.NoData]! * frameRate) {
+          prevReferencePoint = null;
+          handState = HandState.NoData;
+          referencePoint = null;
+          service.removeOverlay();
+          break;
+        }
+
+        if (hasData) {
+          handState = HandState.Tracking;
+          break;
+        }
+
+        break;
+
+      ////
+
+      case HandState.NoData:
+        if (hasData) {
+          handState = HandState.Tracking;
+          break;
+        }
+
+        break;
+
+      ////
+
+      case HandState.Press:
+        if (!hasData) {
+          service.clickScreen();
+          handState = HandState.Unsure;
+          break;
+        }
+
+        if (isFreeGesture()) {
+          service.clickScreen();
+          handState = HandState.Tracking;
+          break;
+        }
+
+        if (stateCounter.toDouble() >=
+            transitionDuration[HandState.Gesture]! * frameRate) {
+          handState = HandState.Gesture;
+          stopwatch.start();
+          startingPoint = Offset(referencePoint!.dx, referencePoint!.dy);
+          break;
+        }
+
+        break;
+
+      ////
+
+      case HandState.Gesture:
+        if (!hasData) {
+          stopwatch.stop();
+          stopwatch.reset();
+          service.clickScreen();
+          handState = HandState.Unsure;
+          break;
+        }
+
+        if (isFreeGesture()) {
+          service.executeGesture(
+              startingPoint!, referencePoint!, stopwatch.elapsedMilliseconds);
+          stopwatch.stop();
+          stopwatch.reset();
+          handState = HandState.Tracking;
+          break;
+        }
+
+        break;
+    }
+
+    if (prevState.name != handState.name) {
+      stateCounter = 1;
+    } else {
+      stateCounter++;
+      if (stateCounter > maxFrames) {
+        handState = HandState.NoData;
+        stateCounter = 1;
+      }
+    }
 
     setState(() {});
   }
@@ -301,14 +445,15 @@ class _MyHomePageState extends State<MyHomePage> {
     );*/
 
     for (var landmark in result[0].handKeyPoints) {
-      double x = awidth -
-          (max(0, (landmark.pointX - widthDif) as double) *
-              awidth /
-              viewportSize!.height);
-      double y = (max(0, (landmark.pointY - heightDif) as double)) *
-          aheight /
-          viewportSize!.width;
-      landmarks[landmark.type] = Offset(min(awidth, x), min(aheight, y));
+      /*double x = awidth -
+          (max(0, (landmark.pointX - widthDif) as double) /
+                  modifiedViewport!.width) *
+              awidth;
+      double y = (max(0, (landmark.pointY - heightDif) as double)) /
+          modifiedViewport!.height *
+          aheight;*/
+      landmarks[landmark.type] = Offset(viewportSize!.width - landmark.pointX,
+          landmark.pointY); // Offset(min(awidth, x), min(aheight, y));
     }
 
     List<bool> marked = List.filled(21, false);
@@ -343,56 +488,33 @@ class _MyHomePageState extends State<MyHomePage> {
     }
     sumX = -sumX / (interestIndexes.length - 1);
     sumY = -sumY / (interestIndexes.length - 1);
-    referencePoint = Offset(landmarks[0]!.dx - sumX, landmarks[0]!.dy - sumY);
+
+    double x = landmarks[0]!.dx - sumX;
+    double y = landmarks[0]!.dy - sumY;
+
+    /**/
+
+    centerPoint = Offset(x, y);
+
+    x = (max(0, (x - widthDif) as double) / modifiedViewport!.width) * awidth;
+    y = (max(0, (y - heightDif) as double)) /
+        modifiedViewport!.height *
+        aheight;
+
+    x = max(0, x);
+    x = min(x, awidth); //
+    y = max(0, y);
+    y = min(y, aheight);
+
+    referencePoint = Offset(x, y);
     // referencePoint=Offset(landmarks[6]!.dx,landmarks[6]!.dy);
-  }
-
-  void detect() {
-    List<List<dynamic>> list = [];
-    //0-type
-    //1-dx
-    //2-dy
-    for (var key in landmarks.keys) {
-      list.add([
-        key,
-        landmarks[key]!.dx,
-        landmarks[key]!.dy,
-      ]);
-    }
-
-    list.sort((e1, e2) {
-      double dist1 = sqrt(pow(e1[1] - referencePoint!.dx, 2) +
-          pow(e1[2] - referencePoint!.dy, 2));
-      double dist2 = sqrt(pow(e2[1] - referencePoint!.dx, 2) +
-          pow(e2[2] - referencePoint!.dy, 2));
-      if (dist1 < dist2) return 1;
-      return 0;
-    });
-
-    if (handState == HandState.NotTracking) {
-      if (isLockGesture()) {
-        prevCenterPoint = Offset(referencePoint!.dx, referencePoint!.dy);
-        handState = HandState.Tracking;
-
-        service.clickScreen();
-
-        /*String filePath = appDocDir.path + '/action.txt';
-        filePath = filePath.replaceFirst("/app_flutter", "", 0);
-        File(filePath).writeAsStringSync("Scroll");*/
-      }
-    } else {
-      if (isFreeGesture()) {
-        prevCenterPoint = null;
-        handState = HandState.NotTracking;
-      }
-    }
   }
 
   bool isLockGesture() {
     bool ok = true;
     for (int i = 0; i < fingerLast.length; i++) {
-      if (getDist(referencePoint!, landmarks[fingerLast[i]]!) >
-          getDist(referencePoint!, landmarks[fingerSecondLast[i]]!)) {
+      if (getDist(centerPoint!, landmarks[fingerLast[i]]!) >
+          getDist(centerPoint!, landmarks[fingerSecondLast[i]]!)) {
         ok = false;
         break;
       }
@@ -415,8 +537,8 @@ class _MyHomePageState extends State<MyHomePage> {
     }*/
     bool ok = true;
     for (int i = 0; i < fingerLast.length; i++) {
-      if (getDist(referencePoint!, landmarks[fingerLast[i]]!) <
-          getDist(referencePoint!, landmarks[fingerSecondLast[i]]!)) {
+      if (getDist(centerPoint!, landmarks[fingerLast[i]]!) <
+          getDist(centerPoint!, landmarks[fingerSecondLast[i]]!)) {
         ok = false;
         break;
       }
@@ -488,8 +610,6 @@ class MyPainter extends CustomPainter {
     return true;
   }
 }
-
-
 
 /*List<bool> marked = List.filled(21, false);
     List<int> interestLandmarks = [1, 2, 5, 6, 10, 11, 14, 15, 18, 19];

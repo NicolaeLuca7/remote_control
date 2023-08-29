@@ -1,4 +1,15 @@
 enum HandState {
-  NotTracking,
   Tracking,
+  Unsure,
+  NoData,
+  Locking,
+  Press,
+  Gesture
 }
+
+Map<HandState, double> transitionDuration = {
+  HandState.NoData: 0.2,
+  ///HandState.Tracking: 20,
+  HandState.Press: 0.2,
+  HandState.Gesture:0.7,
+};

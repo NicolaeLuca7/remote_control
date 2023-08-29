@@ -8,9 +8,12 @@ import android.annotation.TargetApi
 import android.graphics.*
 import android.os.Build
 import android.os.Looper
+import android.provider.CalendarContract
 import android.view.*
 import android.view.accessibility.AccessibilityEvent
 import java.io.File
+import android.view.View
+import android.view.accessibility.AccessibilityNodeInfo
 
 
 @TargetApi(Build.VERSION_CODES.TIRAMISU)
@@ -18,8 +21,12 @@ class GestureAccessibilityService : AccessibilityService() {
 
     var event: AccessibilityEvent? = null
     var view: View? = null
+
     var handX:Float=0f
     var handY:Float=0f
+    val gestureBackSide:Float=10f
+    val gestureHomeSide:Float=25f
+
     var appHeight:Int=0
     var appWidth:Int=0
 
@@ -48,7 +55,16 @@ class GestureAccessibilityService : AccessibilityService() {
 
     }
 
-    fun drawHandLocation(x:Float,y:Float ){
+    fun drawHandLocation(x:Float,y:Float,handState:HandState ){
+        var color=Color.WHITE
+        if(handState==HandState.Press){
+            color= Color.GREEN
+        }
+        else if(handState==HandState.Gesture){
+            color=Color.BLUE;
+        }
+
+
         var windowManager =
             getSystemService(AccessibilityService.WINDOW_SERVICE) as WindowManager
         val display: Display = windowManager.getDefaultDisplay()
@@ -58,38 +74,40 @@ class GestureAccessibilityService : AccessibilityService() {
         handX=x*displayWidth.toFloat()/appWidth
         handY=y*displayHeight.toFloat()/appHeight
 
-        if (view != null)
-            try {
-                windowManager?.removeViewImmediate(view)
-            }
-            catch (e:Exception) {}
-        view = LocationView(baseContext,handX,handY)
-
-        //(view as LocationView).setBackgroundColor(Color.GREEN)
-
-
-
         var parameters = WindowManager.LayoutParams(
             displayWidth,
             displayHeight,
             0,
             0,
-            WindowManager.LayoutParams.TYPE_SYSTEM_OVERLAY,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSPARENT,
+            PixelFormat.TRANSLUCENT,
         )
 
-        windowManager.addView(view, parameters)
+        var newView=LocationView(baseContext,handX,handY,color)
+
+        if (view != null) {
+            windowManager?.removeViewImmediate(view)
+        }
+
+        windowManager.addView(newView, parameters)
+
+        view =newView
+
+        //(view as LocationView).setBackgroundColor(Color.GREEN)
+
     }
 
     fun removeOverlay(){
         var windowManager =
             getSystemService(AccessibilityService.WINDOW_SERVICE) as WindowManager
-        if (view != null)
+        if (view != null){
             try {
                 windowManager?.removeViewImmediate(view)
             }
             catch (e:Exception) {}
+            view=null;
+        }
     }
 
     fun click(){
@@ -122,6 +140,58 @@ class GestureAccessibilityService : AccessibilityService() {
                 super.onCancelled(gestureDescription)
             }
         }, null)
+    }
+
+    fun executeGesture(startX:Float,startY:Float,endX:Float,endY:Float){
+
+        if(startY==endY&&(startX<=gestureBackSide||startX>=appWidth-gestureBackSide)){
+            backGesture()
+            return
+        }
+
+        if(startX==endX&&startY>=appHeight-gestureHomeSide){
+            homeGesture()
+            return
+        }
+
+
+        val builder = GestureDescription.Builder()
+        val path = Path()
+        path.moveTo(startX,startY)
+        path.lineTo(endX,  endY)
+
+        var displayId = event?.displayId
+
+        var sc = SurfaceControl.CREATOR
+
+        var duration=30L;
+
+        val gesture = builder.addStroke(
+            GestureDescription.StrokeDescription(
+                path,
+                0L,
+                duration,
+            )
+        ).build()
+
+
+        dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription) {
+                super.onCompleted(gestureDescription)
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription) {
+                super.onCancelled(gestureDescription)
+            }
+        }, null)
+    }
+
+    fun backGesture(){
+        performGlobalAction(GLOBAL_ACTION_BACK)
+    }
+
+    fun homeGesture(){
+       performGlobalAction(GLOBAL_ACTION_HOME)
     }
 
     override fun onServiceConnected() {

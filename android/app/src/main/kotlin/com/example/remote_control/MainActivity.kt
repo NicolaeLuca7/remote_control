@@ -16,7 +16,12 @@ class MainActivity: FlutterActivity() {
 
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler {
       call, result ->
-      if(call.method=="init"){
+
+      if (call.method == "sendToBackground") {
+        moveTaskToBack(true)
+      }
+      //
+      else if(call.method=="init"){
         try {
           var width = (call.arguments as List<Int>)[0]
           var height = (call.arguments as List<Int>)[1]
@@ -29,18 +34,22 @@ class MainActivity: FlutterActivity() {
           handleException(result,e)
         }
       }
+      //
       else if(call.method=="drawHandLocation"){
         try {
           var x = (call.arguments as List<String>)[0].toFloat()
           var y = (call.arguments as List<String>)[1].toFloat()
 
-          service?.drawHandLocation(x, y)
+          var handState= HandState.valueOf((call.arguments as List<String>)[2]);
+
+          service?.drawHandLocation(x, y,handState)
           result.success("Succes")
         }
         catch (e:Exception){
           handleException(result,e)
         }
       }
+      //
       else if(call.method=="click"){
         try {
           service?.click()
@@ -50,6 +59,23 @@ class MainActivity: FlutterActivity() {
           handleException(result,e)
         }
       }
+      //
+      else if(call.method=="executeGesture"){
+        try{
+          var startX = (call.arguments as List<String>)[0].toFloat()
+          var startY = (call.arguments as List<String>)[1].toFloat()
+          var endX = (call.arguments as List<String>)[2].toFloat()
+          var endY = (call.arguments as List<String>)[3].toFloat()
+          var duration = (call.arguments as List<String>)[4].toLong()
+
+          service?.executeGesture(startX, startY,endX,endY)
+          result.success("Succes")
+        }
+        catch (e:Exception){
+          handleException(result,e)
+        }
+      }
+      //
       else if(call.method=="removeOverlay"){
         try {
           service?.removeOverlay()
