@@ -1,0 +1,12 @@
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@android:color/transparent">
+
+    <ImageView
+        android:id="@+id/gestureView"
+        android:layout_width="60px"
+        android:layout_height="60px"
+        android:src="@drawable/gesture_mouse" />
+</FrameLayout>
