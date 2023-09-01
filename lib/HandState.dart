@@ -11,5 +11,5 @@ Map<HandState, double> transitionDuration = {
   HandState.NoData: 0.2,
   ///HandState.Tracking: 20,
   HandState.Press: 0.2,
-  HandState.Gesture:0.7,
-};
+  HandState.Gesture:1.3,
+};//seconds

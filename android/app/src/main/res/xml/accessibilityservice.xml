@@ -2,9 +2,10 @@
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes = "typeWindowsChanged|typeWindowStateChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackAllMask"
-    android:notificationTimeout="300"
+    android:notificationTimeout="100"
     android:accessibilityFlags="flagDefault"
     android:canRetrieveWindowContent="true"
     android:canPerformGestures="true"
+    android:hardwareAccelerated="true"
 >
 </accessibility-service>

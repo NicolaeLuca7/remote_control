@@ -11,8 +11,13 @@ import 'package:flutter_processing/flutter_processing.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:huawei_ml_body/huawei_ml_body.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:remote_control/HandBorders.dart';
 import 'package:remote_control/HandState.dart';
 import 'package:remote_control/AccessService.dart';
+import 'package:workmanager/workmanager.dart';
+
+import 'MyPainter.dart';
 
 late List<CameraDescription> _cameras;
 
@@ -51,19 +56,23 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _MyHomePageState extends State<MyHomePage>
+    with SingleTickerProviderStateMixin {
   AccessService service = AccessService();
 
   int? textureId;
   int cameraIndex = 1;
   int stateCounter = 0;
+  int initStep = 0;
+  int cnt = 0;
 
   double aheight = 0, awidth = 0;
-  double imgHeight = 0, imgWidth = 0;
-  double heightDif = 0, widthDif = 0;
-  double heightPercent = 0.4, widthPercent = 0.3;
   double frameRate = 30;
   double maxFrames = 10000;
+  double xdif = 0, ydif = 0;
+
+  HandBorders leftHandBorders = HandBorders();
+  HandBorders rightHandBorders = HandBorders();
 
   Size? imageSize;
   Size? viewportSize;
@@ -71,19 +80,25 @@ class _MyHomePageState extends State<MyHomePage> {
 
   var hController;
 
+  Animation<double>? transition;
+  AnimationController? transitionController;
+
   MLBodyLensEngine? engine;
 
   bool processing = false;
   bool loading = true;
+  bool hasData = false;
 
   InputImageRotation? rotation;
 
   String path = '';
+  String initError = '';
 
-  Offset? centerPoint = Offset(0, 0);
-  Offset? referencePoint = Offset(0, 0);
-  Offset? prevReferencePoint = Offset(0, 0);
-  Offset? startingPoint = Offset(0, 0);
+  Offset? centerPoint;
+  Offset? referencePoint;
+  Offset? prevReferencePoint;
+  Offset? startingPoint;
+  Offset? transitionStart;
 
   Rect? handRect = Rect.fromLTRB(0, 0, 0, 0);
 
@@ -101,32 +116,42 @@ class _MyHomePageState extends State<MyHomePage> {
 
   late Directory appDocDir;
 
-  int cnt = 0;
-
   Timer? timer;
+
+  Timer? appLoop;
+  int updateRate = 60; //hz
+
   Stopwatch stopwatch = Stopwatch();
+
+  // @pragma('vm:entry-point') // Mandatory if the App is obfuscated or using Flutter 3.1+
+  // static void callbackDispatcher() {
+  //   Workmanager().executeTask((task, inputData) {
+  //     print("HELLO");
+  //     return Future.value(true);
+  //   });
+  // }
 
   @override
   void initState() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
 
+    // Workmanager().initialize(
+    //     callbackDispatcher, // The top level function, aka callbackDispatcher
+    //     isInDebugMode: true // If enabled it will post a notification whenever the task is running. Handy for debugging tasks
+    // );
+    // Workmanager().registerOneOffTask("task-identifier", "simpleTask");
+
     initApp();
-
-    timer = Timer.periodic(Duration(seconds: 1), (timer) {
-      cnt = 0;
-    });
-
     super.initState();
   }
 
   @override
   void dispose() {
+    transitionController?.dispose();
     service.stop();
     engine!.release();
     super.dispose();
   }
-
-  Image? testImage;
 
   @override
   Widget build(BuildContext context) {
@@ -151,81 +176,236 @@ class _MyHomePageState extends State<MyHomePage> {
                     color: Colors.black,
                   ),
                 )
-              : Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Align(
-                      alignment: Alignment.center,
-                      child: SizedBox(
-                        height: aheight,
-                        width: awidth,
-                        child: Processing(
-                          sketch: sketch,
+              : initError != ''
+                  ? Center(
+                      child: Container(
+                        height: 200,
+                        width: min(300, awidth * 0.9),
+                        decoration: BoxDecoration(
+                          color: Colors.black,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              'Error',
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 30),
+                            ),
+                            Spacer(),
+                            Text(
+                              initError,
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 20),
+                            ),
+                            Spacer(),
+                            Align(
+                              alignment: Alignment.bottomRight,
+                              child: TextButton(
+                                onPressed: () {
+                                  loading = true;
+                                  setState(() {});
+                                  initApp();
+                                },
+                                child: Text(
+                                  "Try again",
+                                  style: TextStyle(
+                                      color: Colors.white, fontSize: 20),
+                                ),
+                              ),
+                            )
+                          ],
                         ),
                       ),
-                    ),
-                    MLBodyLens(
-                      textureId: textureId,
-                      //width: awidth,
-                      //height: aheight,
-                    ),
-                    Align(
+                    )
+                  : Stack(
                       alignment: Alignment.center,
-                      child: SizedBox(
-                        height: aheight,
-                        width: awidth,
-                        child: CustomPaint(
-                          painter: MyPainter(
-                            landmarks: landmarks,
-                            centerPoint: referencePoint,
-                            prevCenterPoint: prevReferencePoint,
-                            handRect: handRect,
-                            handState: handState,
+                      children: [
+                        Align(
+                          alignment: Alignment.center,
+                          child: SizedBox(
+                            height: aheight,
+                            width: awidth,
+                            child: Processing(
+                              sketch: sketch,
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                    Align(
-                      alignment: Alignment.topLeft,
-                      child: Padding(
-                        padding: EdgeInsets.only(left: 10, top: 10),
-                        child: Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(5),
-                            color: handState == HandState.Press
-                                ? Colors.green
-                                : Colors.orange,
+                        MLBodyLens(
+                          textureId: textureId,
+                          //width: awidth,
+                          //height: aheight,
+                        ),
+                        Align(
+                          alignment: Alignment.center,
+                          child: SizedBox(
+                            height: aheight,
+                            width: awidth,
+                            child: CustomPaint(
+                              painter: MyPainter(
+                                landmarks: landmarks,
+                                centerPoint: referencePoint,
+                                prevCenterPoint: prevReferencePoint,
+                                handRect: handRect,
+                                handState: handState,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                        Align(
+                          alignment: Alignment.topLeft,
+                          child: Padding(
+                            padding: EdgeInsets.only(left: 10, top: 10),
+                            child: Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(5),
+                                color: handState == HandState.Press
+                                    ? Colors.green
+                                    : Colors.orange,
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Text(handState.name)
+                      ],
                     ),
-                    // Text(handState.name)
-                  ],
-                ),
         ),
       ),
     );
   }
 
   void initApp() async {
-    await getDirectory();
-    await service.init(awidth, aheight);
-    await initStream();
-    initSketch();
+    bool status;
+    initError = "";
+
+    if (initStep < 1) {
+      status = await getDirectory();
+      if (!status) {
+        loading = false;
+        setState(() {});
+        return;
+      }
+      initStep = 1;
+    }
+
+    if (initStep < 2) {
+      status = await getCameraPermission();
+      if (!status) {
+        loading = false;
+        setState(() {});
+        return;
+      }
+      initStep = 2;
+    }
+
+    if (initStep < 3) {
+      status = await service.init(awidth, aheight);
+      if (!status) {
+        initError = "The service could not start";
+        loading = false;
+        setState(() {});
+        return;
+      }
+      initStep = 3;
+    }
+
+    if (initStep < 4) {
+      status = await initStream();
+      if (!status) {
+        initError = "The camera stream could not start";
+        loading = false;
+        setState(() {});
+        return;
+      }
+      initStep = 4;
+    }
+
+    if (initStep < 5) {
+      try {
+        initSketch();
+        initStep = 5;
+      } catch (e) {
+        initError = "The sketch could not start";
+        loading = false;
+        setState(() {});
+        return;
+      }
+    }
+
+    if (initStep < 6) {
+      status = initTransition();
+      if (!status) {
+        initError = "The transition could not start";
+        loading = false;
+        setState(() {});
+        return;
+      }
+      initStep = 6;
+    }
+
+    runLoop();
     loading = false;
     setState(() {});
   }
 
-  Future<void> getDirectory() async {
-    appDocDir = await getApplicationDocumentsDirectory();
-    String filePath = appDocDir.path + '/action.txt';
-    filePath = filePath.replaceFirst("/app_flutter", "", 0);
-    File(filePath).writeAsStringSync("NoAction");
+  bool initTransition() {
+    try {
+      transitionController = AnimationController(
+          duration: const Duration(milliseconds: 250), vsync: this);
+      transition =
+          Tween<double>(begin: 0, end: 1).animate(transitionController!)
+            ..addListener(() {
+              referencePoint = Offset(
+                  transitionStart!.dx + transition!.value * xdif,
+                  transitionStart!.dy + transition!.value * ydif);
+            });
+    } catch (e) {
+      return false;
+    }
+    return true;
   }
 
-  Future<void> initStream() async {
+  Future<bool> getCameraPermission() async {
+    var status = await Permission.camera.status;
+    if (status.isRestricted) {
+      initError = "Camera access is restricted";
+      return false;
+    } else if (status.isPermanentlyDenied) {
+      initError = "Camera access is permanently denied";
+      return false;
+    } else if (status.isDenied) {
+      status = (await Permission.camera.request());
+      if (status.isRestricted) {
+        initError = "Camera access is restricted";
+        return false;
+      }
+      if (status.isDenied) {
+        initError = "Camera access was denied";
+        return false;
+      } else if (status.isPermanentlyDenied) {
+        initError = "Camera access is permanently denied";
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<bool> getDirectory() async {
+    try {
+      appDocDir = await getApplicationDocumentsDirectory();
+      String filePath = appDocDir.path + '/action.txt';
+      filePath = filePath.replaceFirst("/app_flutter", "", 0);
+      File(filePath).writeAsStringSync("NoAction");
+    } catch (e) {
+      initError = "The application directory could not be obtained";
+      return false;
+    }
+    return true;
+  }
+
+  Future<bool> initStream() async {
     try {
       hController = MLBodyLensController(
         applyFps: frameRate,
@@ -239,15 +419,23 @@ class _MyHomePageState extends State<MyHomePage> {
       });
       engine!.run();
       viewportSize = await engine!.getDisplayDimension();
-      imgHeight = viewportSize!.height * heightPercent;
-      imgWidth = viewportSize!.width * widthPercent;
 
-      widthDif = (viewportSize!.width - imgWidth) / 2;
-      heightDif = (viewportSize!.height - imgHeight) / 2;
-      modifiedViewport = Size(imgWidth, imgHeight);
+      double leftBorder = viewportSize!.width * 0.5;
+      double rightBorder = viewportSize!.width * 0.3;
+      double topBorder = viewportSize!.height * 0.4;
+      double bottomBorder = viewportSize!.height * 0.15;
+
+      leftHandBorders =
+          HandBorders(leftBorder, rightBorder, topBorder, bottomBorder);
+      rightHandBorders =
+          HandBorders(leftBorder, rightBorder, topBorder, bottomBorder);
+
+      modifiedViewport = Size(viewportSize!.width - leftBorder - rightBorder,
+          viewportSize!.height - topBorder - bottomBorder);
     } catch (e) {
-      int i = 0;
+      return false;
     }
+    return true;
   }
 
   void initSketch() {
@@ -261,21 +449,180 @@ class _MyHomePageState extends State<MyHomePage> {
           sketch.background(color: Colors.white);
           return;
         }
+
         sketch.stroke(color: Colors.yellow);
         sketch.strokeWeight(3);
+
+        //Offset p1, p2;
+
+        /*p1 = convertPoint(Offset(widthDif, heightDif));
+        p2 = convertPoint(Offset(viewportSize!.width - widthDif, heightDif));
+        sketch.line(p1, p2);
+
+        p1 = convertPoint(Offset(viewportSize!.width - widthDif, heightDif));
+        p2 = convertPoint(Offset(
+            viewportSize!.width - widthDif, viewportSize!.height - heightDif));
+        sketch.line(p1, p2);
+
+        p1 = convertPoint(Offset(
+            viewportSize!.width - widthDif, viewportSize!.height - heightDif));
+        p2 = convertPoint(Offset(widthDif, viewportSize!.height - heightDif));
+        sketch.line(p1, p2);
+
+        p1 = convertPoint(Offset(widthDif, viewportSize!.height - heightDif));
+        p2 = convertPoint(Offset(widthDif, heightDif));
+        sketch.line(p1, p2);*/
+
         /* sketch.line(
                       Offset(130, 100),
                       Offset(100, 30),
                     );*/
         if (prevReferencePoint != null) {
-          sketch.line(
+          /* sketch.line(
             prevReferencePoint!,
             referencePoint!,
-          );
+          );*/
           prevReferencePoint = Offset(referencePoint!.dx, referencePoint!.dy);
         }
       },
     );
+  }
+
+  void runLoop() {
+    appLoop =
+        Timer.periodic(Duration(milliseconds: 1000 ~/ updateRate), (timer) {
+      switch (handState) {
+        ////
+
+        case HandState.Tracking:
+          if (!hasData) {
+            handState = HandState.Unsure;
+            break;
+          }
+
+          if (isLockGesture()) {
+            handState = HandState.Locking;
+            break;
+          }
+
+          break;
+
+        ////
+
+        case HandState.Locking:
+          if (!hasData) {
+            handState = HandState.Unsure;
+            service.unsureState();
+            break;
+          }
+          if (stateCounter.toDouble() >=
+              transitionDuration[HandState.Press]! * updateRate) {
+            handState = HandState.Press;
+            break;
+          }
+
+          if (isFreeGesture()) {
+            handState = HandState.Tracking;
+            break;
+          }
+
+          break;
+
+        ////
+
+        case HandState.Unsure:
+          if (stateCounter.toDouble() >=
+              transitionDuration[HandState.NoData]! * updateRate) {
+            handState = HandState.NoData;
+            transitionController?.reset();
+            prevReferencePoint = null;
+            referencePoint = null;
+            transitionStart = null;
+            service.removeOverlay();
+            break;
+          }
+
+          if (hasData) {
+            handState = HandState.Tracking;
+            break;
+          }
+
+          break;
+
+        ////
+
+        case HandState.NoData:
+          if (hasData) {
+            handState = HandState.Tracking;
+            break;
+          }
+
+          break;
+
+        ////
+
+        case HandState.Press:
+          if (!hasData) {
+            service.clickScreen();
+            handState = HandState.Unsure;
+            service.unsureState();
+            break;
+          }
+
+          if (isFreeGesture()) {
+            service.clickScreen();
+            handState = HandState.Tracking;
+            break;
+          }
+
+          if (stateCounter.toDouble() >=
+              transitionDuration[HandState.Gesture]! * updateRate) {
+            handState = HandState.Gesture;
+            stopwatch.start();
+            service.setGestureStart();
+            //startingPoint = Offset(referencePoint!.dx, referencePoint!.dy);
+            break;
+          }
+
+          break;
+
+        ////
+
+        case HandState.Gesture:
+          if (!hasData) {
+            stopwatch.stop();
+            stopwatch.reset();
+            service.executeGesture();
+            handState = HandState.Unsure;
+            service.unsureState();
+            break;
+          }
+
+          if (isFreeGesture()) {
+            service.executeGesture();
+            stopwatch.stop();
+            stopwatch.reset();
+            handState = HandState.Tracking;
+            break;
+          }
+
+          break;
+      }
+
+      HandState tempState = HandState.values
+          .firstWhere((element) => element.name == handState.name);
+
+      if (prevState.name != handState.name) {
+        stateCounter = 1;
+      } else {
+        stateCounter++;
+        if (stateCounter > maxFrames) {
+          handState = HandState.NoData;
+          stateCounter = 1;
+        }
+      }
+      prevState = tempState;
+    });
   }
 
   void onTransaction({dynamic result}) {
@@ -287,145 +634,14 @@ class _MyHomePageState extends State<MyHomePage> {
     cnt++;
 
     double normalSize = min(aheight, awidth);
-    bool hasData = false;
-
-    prevState = HandState.values
-        .firstWhere((element) => element.name == handState.name);
+    hasData = false;
 
     if (result.length == 0 || result[0].handKeyPoints.length != 21) {
-      /*if (handState == HandState.Tracking) {
-
-      } else {
-        service.removeOverlay();
-      }*/
     } else {
       computeData(result);
-      service.drawHandLocation(referencePoint ?? Offset(0, 0), handState);
+      if (referencePoint != null)
+        service.drawHandLocation(referencePoint!, handState);
       hasData = true;
-    }
-
-    switch (handState) {
-      ////
-
-      case HandState.Tracking:
-        if (!hasData) {
-          handState = HandState.Unsure;
-          break;
-        }
-
-        if (isLockGesture()) {
-          handState = HandState.Locking;
-          break;
-        }
-
-        break;
-
-      ////
-
-      case HandState.Locking:
-        if (!hasData) {
-          handState = HandState.Unsure;
-          break;
-        }
-        double nr = transitionDuration[HandState.Press]! * frameRate;
-        if (stateCounter.toDouble() >=
-            transitionDuration[HandState.Press]! * frameRate) {
-          handState = HandState.Press;
-          break;
-        }
-
-        if (isFreeGesture()) {
-          handState = HandState.Tracking;
-          break;
-        }
-
-        break;
-
-      ////
-
-      case HandState.Unsure:
-        if (stateCounter.toDouble() >=
-            transitionDuration[HandState.NoData]! * frameRate) {
-          prevReferencePoint = null;
-          handState = HandState.NoData;
-          referencePoint = null;
-          service.removeOverlay();
-          break;
-        }
-
-        if (hasData) {
-          handState = HandState.Tracking;
-          break;
-        }
-
-        break;
-
-      ////
-
-      case HandState.NoData:
-        if (hasData) {
-          handState = HandState.Tracking;
-          break;
-        }
-
-        break;
-
-      ////
-
-      case HandState.Press:
-        if (!hasData) {
-          service.clickScreen();
-          handState = HandState.Unsure;
-          break;
-        }
-
-        if (isFreeGesture()) {
-          service.clickScreen();
-          handState = HandState.Tracking;
-          break;
-        }
-
-        if (stateCounter.toDouble() >=
-            transitionDuration[HandState.Gesture]! * frameRate) {
-          handState = HandState.Gesture;
-          stopwatch.start();
-          startingPoint = Offset(referencePoint!.dx, referencePoint!.dy);
-          break;
-        }
-
-        break;
-
-      ////
-
-      case HandState.Gesture:
-        if (!hasData) {
-          stopwatch.stop();
-          stopwatch.reset();
-          service.clickScreen();
-          handState = HandState.Unsure;
-          break;
-        }
-
-        if (isFreeGesture()) {
-          service.executeGesture(
-              startingPoint!, referencePoint!, stopwatch.elapsedMilliseconds);
-          stopwatch.stop();
-          stopwatch.reset();
-          handState = HandState.Tracking;
-          break;
-        }
-
-        break;
-    }
-
-    if (prevState.name != handState.name) {
-      stateCounter = 1;
-    } else {
-      stateCounter++;
-      if (stateCounter > maxFrames) {
-        handState = HandState.NoData;
-        stateCounter = 1;
-      }
     }
 
     setState(() {});
@@ -496,19 +712,62 @@ class _MyHomePageState extends State<MyHomePage> {
 
     centerPoint = Offset(x, y);
 
-    x = (max(0, (x - widthDif) as double) / modifiedViewport!.width) * awidth;
-    y = (max(0, (y - heightDif) as double)) /
-        modifiedViewport!.height *
-        aheight;
+    double leftBorder;
+    double rightBorder;
+    double topBorder;
+    double bottomBorder;
 
-    x = max(0, x);
-    x = min(x, awidth); //
-    y = max(0, y);
-    y = min(y, aheight);
+    if (isLeftHand()) {
+      leftBorder = leftHandBorders.leftBorder;
+      rightBorder = leftHandBorders.rightBorder;
+      topBorder = leftHandBorders.topBorder;
+      bottomBorder = leftHandBorders.bottomBorder;
+    } else {
+      leftBorder = rightHandBorders.leftBorder;
+      rightBorder = rightHandBorders.rightBorder;
+      topBorder = rightHandBorders.topBorder;
+      bottomBorder = rightHandBorders.bottomBorder;
+    }
 
+    if (x <= leftBorder) {
+      x = 0;
+    } else if (x >= viewportSize!.width - rightBorder) {
+      x = modifiedViewport!.width;
+    } else {
+      x -= leftBorder;
+    }
+
+    if (y <= topBorder) {
+      y = 0;
+    } else if (y >= viewportSize!.height - bottomBorder) {
+      y = modifiedViewport!.height;
+    } else {
+      y -= topBorder;
+    }
+
+    x = x / modifiedViewport!.width * awidth;
+    y = y / modifiedViewport!.height * aheight;
+
+    //if (referencePoint == null) {
     referencePoint = Offset(x, y);
-    // referencePoint=Offset(landmarks[6]!.dx,landmarks[6]!.dy);
+    /*} else {
+      setTransitionPoint(Offset(x, y));
+    }*/
   }
+
+  void setTransitionPoint(Offset p) {
+    transitionStart = Offset(referencePoint!.dx, referencePoint!.dy);
+    xdif = p.dx - transitionStart!.dx;
+    ydif = p.dy - transitionStart!.dy;
+    transitionController?.reset();
+    transitionController?.forward();
+  }
+
+  bool isLeftHand() => (landmarks[4]!.dx >= landmarks[20]!.dx);
+
+  Offset convertPoint(Offset point) => Offset(
+      point.dx / viewportSize!.width * awidth,
+      point.dy / viewportSize!.height * aheight);
 
   bool isLockGesture() {
     bool ok = true;
@@ -562,53 +821,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   double getDist(Offset p1, Offset p2) =>
       sqrt(pow((p1.dx - p2.dx), 2) + pow((p1.dy - p2.dy), 2));
-}
-
-class MyPainter extends CustomPainter {
-  Map<int, Offset> landmarks;
-  Offset? centerPoint;
-  Offset? prevCenterPoint;
-  Rect? handRect;
-  HandState handState;
-
-  MyPainter(
-      {required this.landmarks,
-      required this.centerPoint,
-      required this.prevCenterPoint,
-      required this.handRect,
-      required this.handState});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    Paint paint = Paint();
-
-    for (var point in landmarks.values) {
-      canvas.drawCircle(
-          Offset(point.dx, point.dy), 5, paint..color = Colors.red);
-    }
-    if (handRect != null) {
-      canvas.drawRect(
-          handRect!,
-          paint
-            ..color = Colors.yellow.withOpacity(0.5)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 3);
-    }
-
-    if (centerPoint != null) {
-      canvas.drawCircle(
-          centerPoint!,
-          10,
-          paint
-            ..color = Colors.yellow.withOpacity(0.5)
-            ..style = PaintingStyle.fill);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return true;
-  }
 }
 
 /*List<bool> marked = List.filled(21, false);

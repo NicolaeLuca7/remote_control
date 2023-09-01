@@ -41,6 +41,8 @@ dependencies:
   path_provider: ^2.0.15
   flutter_processing: ^0.2.0
   flutter_accessibility_service: ^0.2.2
+  permission_handler: ^10.4.3
+  workmanager: ^0.5.1
 
 
 

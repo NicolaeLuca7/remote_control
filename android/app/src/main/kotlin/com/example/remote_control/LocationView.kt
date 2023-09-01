@@ -16,9 +16,10 @@ class LocationView(mas: Context?,x:Float,y:Float,color:Int) : View(mas) {
     }
 
     override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
+        setLayerType(LAYER_TYPE_HARDWARE, null);
         paint.color=color
         canvas.drawCircle(xPos,yPos,30f,paint)
+        super.onDraw(canvas)
     }
 
 }

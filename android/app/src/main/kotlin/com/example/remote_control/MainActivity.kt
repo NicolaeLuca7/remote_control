@@ -1,5 +1,7 @@
 package com.example.remote_control
 
+import android.animation.ValueAnimator
+import android.graphics.PointF
 import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -8,11 +10,11 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity: FlutterActivity() {
   private val CHANNEL = "app/gesture_control"
 
-
+  var service:GestureAccessibilityService?=null
 
   override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
-    var service:GestureAccessibilityService?=null;
+
 
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler {
       call, result ->
@@ -28,9 +30,26 @@ class MainActivity: FlutterActivity() {
 
           service = GestureAccessibilityService.instance
           service?.setAppSizes(width, height)
+          service?.initTransition()
+
           result.success("Succes")
         }
         catch (e:Exception){
+          handleException(result,e)
+        }
+      }
+      //
+      else if(call.method=="checkConnection") {
+        try{
+          if(service==null){
+            result.success(false.toString())
+          }
+          else {
+            var status = service?.isConnected()
+            result.success(status.toString())
+          }
+        }
+        catch(e:Exception){
           handleException(result,e)
         }
       }
@@ -60,15 +79,29 @@ class MainActivity: FlutterActivity() {
         }
       }
       //
+      else if(call.method=="setGestureStart"){
+        try {
+          service?.setGestureStart()
+          result.success("Succes")
+        }
+        catch (e:Exception){
+          handleException(result,e)
+        }
+      }
+      //
       else if(call.method=="executeGesture"){
         try{
-          var startX = (call.arguments as List<String>)[0].toFloat()
-          var startY = (call.arguments as List<String>)[1].toFloat()
-          var endX = (call.arguments as List<String>)[2].toFloat()
-          var endY = (call.arguments as List<String>)[3].toFloat()
-          var duration = (call.arguments as List<String>)[4].toLong()
-
-          service?.executeGesture(startX, startY,endX,endY)
+          service?.executeGesture()
+          result.success("Succes")
+        }
+        catch (e:Exception){
+          handleException(result,e)
+        }
+      }
+      //
+      else if(call.method=="unsureState"){
+        try{
+          service?.unsureState()
           result.success("Succes")
         }
         catch (e:Exception){
