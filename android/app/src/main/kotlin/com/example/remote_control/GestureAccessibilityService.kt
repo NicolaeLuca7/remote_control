@@ -1,6 +1,5 @@
 package com.example.remote_control
 
-import LocationView
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
@@ -28,6 +27,12 @@ class GestureAccessibilityService : AccessibilityService() {
 
     var event: AccessibilityEvent? = null
     var view: View? = null
+
+    var parameters:WindowManager.LayoutParams?=null
+
+    var trackingView: View? = null
+    var pressView: View? = null
+    var gestureView: View? = null
 
     var referencePoint: PointF? = null
     var transitionStart: PointF? = null
@@ -88,10 +93,12 @@ class GestureAccessibilityService : AccessibilityService() {
         }
 
         var windowManager =
-            getSystemService(AccessibilityService.WINDOW_SERVICE) as WindowManager
+            getSystemService(WINDOW_SERVICE) as WindowManager
+
         val display: Display = windowManager.getDefaultDisplay()
         displayWidth = display.width.toFloat()
         displayHeight = display.height.toFloat()
+
         statusBarHeight = getResources().getDimensionPixelSize(
             getResources().getIdentifier(
                 "status_bar_height",
@@ -99,6 +106,23 @@ class GestureAccessibilityService : AccessibilityService() {
                 "android"
             )
         ).toFloat()
+
+        parameters = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT,
+        )
+
+        trackingView = LayoutInflater.from(this)
+            .inflate(com.example.remote_control.R.layout.tracking_view, null)
+
+        pressView = LayoutInflater.from(this)
+            .inflate(com.example.remote_control.R.layout.press_view, null)
+
+        gestureView = LayoutInflater.from(this)
+            .inflate(com.example.remote_control.R.layout.gesture_view, null)
 
         connected = true
 
@@ -143,7 +167,7 @@ class GestureAccessibilityService : AccessibilityService() {
                 transitionStart!!.x + (current.animatedValue as Float) * xdif,
                 transitionStart!!.y + (current.animatedValue as Float) * ydif
             )
-            drawOverlay()
+            //drawOverlay()
         }
     }
 
@@ -169,51 +193,37 @@ class GestureAccessibilityService : AccessibilityService() {
             transition.start()
             return
         }*/
+
         referencePoint = PointF(convertX(x), convertY(y))
         drawOverlay()
-        //(view as LocationView).setBackgroundColor(Color.GREEN)
-
     }
 
     fun drawOverlay() {
-        var color = Color.WHITE
-        if (handState == HandState.Press) {
-            color = Color.GREEN
-        } else if (handState == HandState.Gesture) {
-            color = Color.BLUE
-        }
-
         var windowManager =
             getSystemService(AccessibilityService.WINDOW_SERVICE) as WindowManager
 
-        val display: Display = windowManager.getDefaultDisplay()
-        displayWidth = display.width.toFloat()
-        displayHeight = display.height.toFloat()
-        statusBarHeight = getResources().getDimensionPixelSize(
-            getResources().getIdentifier(
-                "status_bar_height",
-                "dimen",
-                "android"
-            )
-        ).toFloat()
+        parameters!!.x = (referencePoint!!.x - displayWidth / 2).toInt()
+        parameters!!.y = (referencePoint!!.y - displayHeight / 2).toInt()
 
-        var parameters = WindowManager.LayoutParams(
-            displayWidth.toInt(),
-            displayHeight.toInt(),
-            0,
-            0,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT,
-        )
+        var newView:View
 
-        var newView = LocationView(baseContext, referencePoint!!.x, referencePoint!!.y, color)
-
-        if (view != null) {
-            windowManager.removeViewImmediate(view)
+        if (handState == HandState.Press) {
+            newView=pressView!!
+        } else if (handState == HandState.Gesture) {
+            newView=gestureView!!
+        }
+        else{
+            newView=trackingView!!
         }
 
-        windowManager.addView(newView, parameters)
+        if (view != null) {
+            windowManager.updateViewLayout(
+                newView,
+                parameters
+            ) //windowManager.removeViewImmediate(view)
+        } else {
+            windowManager.addView(newView, parameters)
+        }
 
         view = newView
     }

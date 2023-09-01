@@ -4,7 +4,6 @@
     <application
         android:icon="@mipmap/ic_launcher"
         android:label="remote_control">
-
         <service
             android:name=".GestureAccessibilityService"
             android:exported="false"
