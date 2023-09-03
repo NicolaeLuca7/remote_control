@@ -15,13 +15,13 @@ class MainActivity: FlutterActivity() {
   override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
 
-
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler {
       call, result ->
 
       if (call.method == "sendToBackground") {
         moveTaskToBack(true)
       }
+
       //
       else if(call.method=="init"){
         try {
@@ -30,7 +30,6 @@ class MainActivity: FlutterActivity() {
 
           service = GestureAccessibilityService.instance
           service?.setAppSizes(width, height)
-          service?.initTransition()
 
           result.success("Succes")
         }
@@ -59,7 +58,7 @@ class MainActivity: FlutterActivity() {
           var x = (call.arguments as List<String>)[0].toFloat()
           var y = (call.arguments as List<String>)[1].toFloat()
 
-          var handState= HandState.valueOf((call.arguments as List<String>)[2]);
+          var handState= HandState.valueOf((call.arguments as List<String>)[2])
 
           service?.drawHandLocation(x, y,handState)
           result.success("Succes")
@@ -128,6 +127,5 @@ class MainActivity: FlutterActivity() {
     }
     result.error("Error",message,null)
   }
-
 
 }

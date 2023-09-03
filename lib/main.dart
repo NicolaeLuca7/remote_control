@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:camera/camera.dart';
@@ -121,26 +122,13 @@ class _MyHomePageState extends State<MyHomePage>
   Timer? appLoop;
   int updateRate = 60; //hz
 
-  Stopwatch stopwatch = Stopwatch();
+  double changeInterval = 0.12; //seconds
 
-  // @pragma('vm:entry-point') // Mandatory if the App is obfuscated or using Flutter 3.1+
-  // static void callbackDispatcher() {
-  //   Workmanager().executeTask((task, inputData) {
-  //     print("HELLO");
-  //     return Future.value(true);
-  //   });
-  // }
+  Stopwatch stopwatch = Stopwatch();
 
   @override
   void initState() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
-
-    // Workmanager().initialize(
-    //     callbackDispatcher, // The top level function, aka callbackDispatcher
-    //     isInDebugMode: true // If enabled it will post a notification whenever the task is running. Handy for debugging tasks
-    // );
-    // Workmanager().registerOneOffTask("task-identifier", "simpleTask");
-
     initApp();
     super.initState();
   }
@@ -350,23 +338,6 @@ class _MyHomePageState extends State<MyHomePage>
     setState(() {});
   }
 
-  bool initTransition() {
-    try {
-      transitionController = AnimationController(
-          duration: const Duration(milliseconds: 250), vsync: this);
-      transition =
-          Tween<double>(begin: 0, end: 1).animate(transitionController!)
-            ..addListener(() {
-              referencePoint = Offset(
-                  transitionStart!.dx + transition!.value * xdif,
-                  transitionStart!.dy + transition!.value * ydif);
-            });
-    } catch (e) {
-      return false;
-    }
-    return true;
-  }
-
   Future<bool> getCameraPermission() async {
     var status = await Permission.camera.status;
     if (status.isRestricted) {
@@ -488,141 +459,167 @@ class _MyHomePageState extends State<MyHomePage>
     );
   }
 
+  bool initTransition() {
+    try {
+      transitionController = AnimationController(
+          duration: const Duration(milliseconds: 125), vsync: this);
+      transition =
+          Tween<double>(begin: 0, end: 1).animate(transitionController!)
+            ..addListener(() {
+              referencePoint = Offset(
+                  transitionStart!.dx + transition!.value * xdif,
+                  transitionStart!.dy + transition!.value * ydif);
+            });
+    } catch (e) {
+      return false;
+    }
+    return true;
+  }
+
   void runLoop() {
-    appLoop =
-        Timer.periodic(Duration(milliseconds: 1000 ~/ updateRate), (timer) {
-      switch (handState) {
-        ////
-
-        case HandState.Tracking:
-          if (!hasData) {
-            handState = HandState.Unsure;
-            break;
-          }
-
-          if (isLockGesture()) {
-            handState = HandState.Locking;
-            break;
-          }
-
-          break;
-
-        ////
-
-        case HandState.Locking:
-          if (!hasData) {
-            handState = HandState.Unsure;
-            service.unsureState();
-            break;
-          }
-          if (stateCounter.toDouble() >=
-              transitionDuration[HandState.Press]! * updateRate) {
-            handState = HandState.Press;
-            break;
-          }
-
-          if (isFreeGesture()) {
-            handState = HandState.Tracking;
-            break;
-          }
-
-          break;
-
-        ////
-
-        case HandState.Unsure:
-          if (stateCounter.toDouble() >=
-              transitionDuration[HandState.NoData]! * updateRate) {
-            handState = HandState.NoData;
-            transitionController?.reset();
-            prevReferencePoint = null;
-            referencePoint = null;
-            transitionStart = null;
-            service.removeOverlay();
-            break;
-          }
-
-          if (hasData) {
-            handState = HandState.Tracking;
-            break;
-          }
-
-          break;
-
-        ////
-
-        case HandState.NoData:
-          if (hasData) {
-            handState = HandState.Tracking;
-            break;
-          }
-
-          break;
-
-        ////
-
-        case HandState.Press:
-          if (!hasData) {
-            service.clickScreen();
-            handState = HandState.Unsure;
-            service.unsureState();
-            break;
-          }
-
-          if (isFreeGesture()) {
-            service.clickScreen();
-            handState = HandState.Tracking;
-            break;
-          }
-
-          if (stateCounter.toDouble() >=
-              transitionDuration[HandState.Gesture]! * updateRate) {
-            handState = HandState.Gesture;
-            stopwatch.start();
-            service.setGestureStart();
-            //startingPoint = Offset(referencePoint!.dx, referencePoint!.dy);
-            break;
-          }
-
-          break;
-
-        ////
-
-        case HandState.Gesture:
-          if (!hasData) {
-            stopwatch.stop();
-            stopwatch.reset();
-            service.executeGesture();
-            handState = HandState.Unsure;
-            service.unsureState();
-            break;
-          }
-
-          if (isFreeGesture()) {
-            service.executeGesture();
-            stopwatch.stop();
-            stopwatch.reset();
-            handState = HandState.Tracking;
-            break;
-          }
-
-          break;
-      }
-
-      HandState tempState = HandState.values
-          .firstWhere((element) => element.name == handState.name);
-
-      if (prevState.name != handState.name) {
-        stateCounter = 1;
-      } else {
-        stateCounter++;
-        if (stateCounter > maxFrames) {
-          handState = HandState.NoData;
-          stateCounter = 1;
+      appLoop =
+          Timer.periodic(Duration(milliseconds: 1000 ~/ updateRate), (timer) {
+//
+        if (transitionStart != null) {
+          referencePoint =
+              Offset(transitionStart!.dx + xdif, transitionStart!.dy + ydif);
         }
-      }
-      prevState = tempState;
-    });
+        if (referencePoint != null) {
+          service.drawHandLocation(referencePoint!, handState);
+        }
+
+        switch (handState) {
+          ////
+
+          case HandState.Tracking:
+            if (!hasData) {
+              handState = HandState.Unsure;
+              break;
+            }
+
+            if (isLockGesture()) {
+              handState = HandState.Locking;
+              break;
+            }
+
+            break;
+
+          ////
+
+          case HandState.Locking:
+            if (!hasData) {
+              handState = HandState.Unsure;
+              service.unsureState();
+              break;
+            }
+            if (stateCounter.toDouble() >=
+                transitionDuration[HandState.Press]! * updateRate) {
+              handState = HandState.Press;
+              break;
+            }
+
+            if (isFreeGesture()) {
+              handState = HandState.Tracking;
+              break;
+            }
+
+            break;
+
+          ////
+
+          case HandState.Unsure:
+            if (stateCounter.toDouble() >=
+                transitionDuration[HandState.NoData]! * updateRate) {
+              handState = HandState.NoData;
+              transitionController?.reset();
+              prevReferencePoint = null;
+              referencePoint = null;
+              transitionStart = null;
+              service.removeOverlay();
+              break;
+            }
+
+            if (hasData) {
+              handState = HandState.Tracking;
+              break;
+            }
+
+            break;
+
+          ////
+
+          case HandState.NoData:
+            if (hasData) {
+              handState = HandState.Tracking;
+              break;
+            }
+
+            break;
+
+          ////
+
+          case HandState.Press:
+            if (!hasData) {
+              service.clickScreen();
+              handState = HandState.Unsure;
+              service.unsureState();
+              break;
+            }
+
+            if (isFreeGesture()) {
+              service.clickScreen();
+              handState = HandState.Tracking;
+              break;
+            }
+
+            if (stateCounter.toDouble() >=
+                transitionDuration[HandState.Gesture]! * updateRate) {
+              handState = HandState.Gesture;
+              stopwatch.start();
+              service.setGestureStart();
+              //startingPoint = Offset(referencePoint!.dx, referencePoint!.dy);
+              break;
+            }
+
+            break;
+
+          ////
+
+          case HandState.Gesture:
+            if (!hasData) {
+              stopwatch.stop();
+              stopwatch.reset();
+              service.executeGesture();
+              handState = HandState.Unsure;
+              service.unsureState();
+              break;
+            }
+
+            if (isFreeGesture()) {
+              service.executeGesture();
+              stopwatch.stop();
+              stopwatch.reset();
+              handState = HandState.Tracking;
+              break;
+            }
+
+            break;
+        }
+
+        HandState tempState = HandState.values
+            .firstWhere((element) => element.name == handState.name);
+
+        if (prevState.name != handState.name) {
+          stateCounter = 1;
+        } else {
+          stateCounter++;
+          if (stateCounter > maxFrames) {
+            handState = HandState.NoData;
+            stateCounter = 1;
+          }
+        }
+        prevState = tempState;
+      });
   }
 
   void onTransaction({dynamic result}) {
@@ -639,8 +636,7 @@ class _MyHomePageState extends State<MyHomePage>
     if (result.length == 0 || result[0].handKeyPoints.length != 21) {
     } else {
       computeData(result);
-      if (referencePoint != null)
-        service.drawHandLocation(referencePoint!, handState);
+
       hasData = true;
     }
 
@@ -748,11 +744,14 @@ class _MyHomePageState extends State<MyHomePage>
     x = x / modifiedViewport!.width * awidth;
     y = y / modifiedViewport!.height * aheight;
 
-    //if (referencePoint == null) {
-    referencePoint = Offset(x, y);
-    /*} else {
-      setTransitionPoint(Offset(x, y));
-    }*/
+    if (referencePoint == null) {
+      referencePoint = Offset(x, y);
+    } else {
+      transitionStart = Offset(referencePoint!.dx, referencePoint!.dy);
+      xdif = (x - transitionStart!.dx) / (updateRate * changeInterval);
+      ydif = (y - transitionStart!.dy) / (updateRate * changeInterval);
+      //setTransitionPoint(Offset(x, y));
+    }
   }
 
   void setTransitionPoint(Offset p) {

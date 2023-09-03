@@ -34,12 +34,12 @@ class MyPainter extends CustomPainter {
     }
 
     if (centerPoint != null) {
-      canvas.drawCircle(
+     /* canvas.drawCircle(
           centerPoint!,
           10,
           paint
             ..color = Colors.yellow.withOpacity(0.5)
-            ..style = PaintingStyle.fill);
+            ..style = PaintingStyle.fill);*/
     }
   }
 

@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Looper
 import android.view.*
 import android.view.accessibility.AccessibilityEvent
+import androidx.core.view.ViewCompat.setLayerType
 import java.io.File
 import java.lang.Math.PI
 import java.lang.Math.acos
@@ -35,13 +36,10 @@ class GestureAccessibilityService : AccessibilityService() {
     var gestureView: View? = null
 
     var referencePoint: PointF? = null
-    var transitionStart: PointF? = null
     var gestureStart: PointF = PointF(0F, 0F)
 
     var handState: HandState = HandState.NoData
 
-    var xdif: Float = 0f
-    var ydif: Float = 0f
     val gestureBackSide: Float = 20f
     val gestureHomeSide: Float = 50f
     var statusBarHeight: Float = 0f
@@ -52,8 +50,6 @@ class GestureAccessibilityService : AccessibilityService() {
     var appWidth: Int = 0
 
     var resetTimer: Timer? = null
-
-    lateinit var transition: ValueAnimator
 
 
     companion object {
@@ -112,7 +108,7 @@ class GestureAccessibilityService : AccessibilityService() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT,
+            PixelFormat.RGBA_8888,
         )
 
         trackingView = LayoutInflater.from(this)
@@ -155,25 +151,7 @@ class GestureAccessibilityService : AccessibilityService() {
         return y * displayHeight.toFloat() / appHeight //+ statusBarHeight
     }
 
-    fun initTransition() {
-        transition = ValueAnimator.ofFloat(0f, 1f)
-        transition.duration = 250 // Duration in milliseconds
-
-        transition.addUpdateListener { current ->
-            if ((current.animatedValue as Float) > 0f && (current.animatedValue as Float) < 1f) {
-                var i = 0
-            }
-            referencePoint = PointF(
-                transitionStart!!.x + (current.animatedValue as Float) * xdif,
-                transitionStart!!.y + (current.animatedValue as Float) * ydif
-            )
-            //drawOverlay()
-        }
-    }
-
     fun unsureState() {
-        transition.cancel()
-        transitionStart = null
         referencePoint = null
         handState = HandState.Unsure
     }
@@ -184,16 +162,6 @@ class GestureAccessibilityService : AccessibilityService() {
 
     fun drawHandLocation(x: Float, y: Float, handState: HandState) {
         this.handState = handState
-
-        /*if (referencePoint != null) {
-            transitionStart = PointF(referencePoint!!.x, referencePoint!!.y)
-            xdif = x - referencePoint!!.x
-            ydif = y - referencePoint!!.y
-            transition.cancel()
-            transition.start()
-            return
-        }*/
-
         referencePoint = PointF(convertX(x), convertY(y))
         drawOverlay()
     }
@@ -279,12 +247,10 @@ class GestureAccessibilityService : AccessibilityService() {
             backGesture()
             return
         }
-
         if (gestureStart.x == gestureEnd.x && gestureStart.y >= displayHeight - gestureHomeSide) {
             homeGesture()
             return
         }
-
 
         val builder = GestureDescription.Builder()
         val path = Path()
@@ -292,9 +258,7 @@ class GestureAccessibilityService : AccessibilityService() {
         path.lineTo(gestureEnd.x, gestureEnd.y + statusBarHeight)
 
         var displayId = event?.displayId
-
         var sc = SurfaceControl.CREATOR
-
         var duration = 30L;
 
         val gesture = builder.addStroke(
@@ -304,7 +268,6 @@ class GestureAccessibilityService : AccessibilityService() {
                 duration,
             )
         ).build()
-
 
         dispatchGesture(gesture, object : GestureResultCallback() {
             override fun onCompleted(gestureDescription: GestureDescription) {
@@ -347,65 +310,5 @@ class GestureAccessibilityService : AccessibilityService() {
     fun homeGesture() {
         performGlobalAction(GLOBAL_ACTION_HOME)
     }
-
-    fun checkChanges() {
-        try {
-            var name = event?.packageName
-
-            var filePath = getApplicationInfo().dataDir;
-            if (filePath == null)
-                return;
-
-            filePath += "/action.txt";
-            var file = File(filePath)
-
-            var action = file.readText()
-
-
-            if (action == "Scroll") {
-                file.writeText("NoAction")
-
-                val builder = GestureDescription.Builder()
-                val path = Path()
-                path.moveTo(200f, 700f)
-                path.lineTo(200f, 100f)
-
-                val duration = 500L // 0.5 second
-
-                var displayId = event?.displayId
-
-                var sc = SurfaceControl.CREATOR
-
-
-                val gesture = builder.addStroke(
-                    GestureDescription.StrokeDescription(
-                        path,
-                        0L,
-                        duration,
-                    )
-                ).build()
-
-
-                dispatchGesture(gesture, object : GestureResultCallback() {
-                    override fun onCompleted(gestureDescription: GestureDescription) {
-                        super.onCompleted(gestureDescription)
-                    }
-
-                    override fun onCancelled(gestureDescription: GestureDescription) {
-                        super.onCancelled(gestureDescription)
-                    }
-                }, null)
-
-            }
-        } catch (e: Exception) {
-            var i = 0
-        }
-    }
-
-    fun startLoop() {
-        Looper.prepare()
-
-    }
-
 
 }
