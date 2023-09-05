@@ -91,6 +91,8 @@ class _MyHomePageState extends State<MyHomePage>
   bool loading = true;
   bool hasData = false;
 
+  bool updatePoint=true;
+
   InputImageRotation? rotation;
 
   String path = '';
@@ -121,7 +123,7 @@ class _MyHomePageState extends State<MyHomePage>
   Timer? timer;
 
   Timer? appLoop;
-  int updateRate = 100; //hz
+  int updateRate = 60; //hz
 
   double cursorSpeed = 0.12; //seconds
 
@@ -248,9 +250,9 @@ class _MyHomePageState extends State<MyHomePage>
                                   max: 0.24,
                                   min: 0.05,
                                   activeColor: Color.fromARGB(255, 12, 47, 105),
-                                  value: cursorSpeed,
+                                  value: 0.24-cursorSpeed,
                                   onChanged: (val) {
-                                    cursorSpeed = val;
+                                    cursorSpeed =0.24- val;
                                   },
                                 ),
                               ),
@@ -645,6 +647,7 @@ class _MyHomePageState extends State<MyHomePage>
 
         case HandState.Press:
           if (!hasData) {
+            //startTimeout();
             service.clickScreen();
             handState = HandState.Unsure;
             service.unsureState();
@@ -652,6 +655,7 @@ class _MyHomePageState extends State<MyHomePage>
           }
 
           if (isFreeGesture()) {
+            //startTimeout();
             service.clickScreen();
             handState = HandState.Tracking;
             break;
@@ -674,6 +678,7 @@ class _MyHomePageState extends State<MyHomePage>
           if (!hasData) {
             stopwatch.stop();
             stopwatch.reset();
+            //startTimeout();
             service.executeGesture();
             handState = HandState.Unsure;
             service.unsureState();
@@ -681,6 +686,7 @@ class _MyHomePageState extends State<MyHomePage>
           }
 
           if (isFreeGesture()) {
+            //startTimeout();
             service.executeGesture();
             stopwatch.stop();
             stopwatch.reset();
@@ -707,6 +713,13 @@ class _MyHomePageState extends State<MyHomePage>
     });
   }
 
+  void startTimeout(){
+    updatePoint=false;
+    var timeout=Timer(Duration(milliseconds: 200),(){
+      updatePoint=true;
+    });
+  }
+
   void onTransaction({dynamic result}) {
     int i = 0;
     //centerPoint = null;
@@ -720,9 +733,10 @@ class _MyHomePageState extends State<MyHomePage>
 
     if (result.length == 0 || result[0].handKeyPoints.length != 21) {
     } else {
-      computeData(result);
-
-      hasData = true;
+      if(updatePoint) {
+        computeData(result);
+        hasData = true;
+      }
     }
 
     setState(() {});

@@ -8,8 +8,7 @@
         style="?android:attr/borderlessButtonStyle"
         android:layout_width="60px"
         android:layout_height="60px"
-        android:background="@drawable/tracking_background"
-        android:paddingBottom="5px"></Button>
+        android:background="@drawable/tracking_background"></Button>
 
     <!--    <ImageView-->
     <!--        android:id="@+id/trackingView"-->

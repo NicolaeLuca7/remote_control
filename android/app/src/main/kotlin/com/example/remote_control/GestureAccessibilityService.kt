@@ -21,8 +21,11 @@ import java.lang.Math.cos
 import java.lang.Math.pow
 import java.lang.Math.sin
 import java.lang.Math.sqrt
+import java.lang.Thread.sleep
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
+import java.util.Timer
+import java.util.TimerTask
 
 
 @TargetApi(Build.VERSION_CODES.TIRAMISU)
@@ -55,6 +58,10 @@ class GestureAccessibilityService : AccessibilityService() {
     private var gestureSpeed: Long = 90
 
     private var lastUpdate: LocalDateTime? = null
+
+    private var timer: Timer? = null
+
+    private var drawMouse: Boolean = true
 
 
     companion object {
@@ -206,16 +213,17 @@ class GestureAccessibilityService : AccessibilityService() {
             trackingBackground?.setColor(Color.parseColor("#CCdbdad5"))
         }
 
-        if (view != null) {
-            windowManager.updateViewLayout(
-                trackingView,
-                parameters
-            ) //windowManager.removeViewImmediate(view)
-        } else {
-            windowManager.addView(trackingView, parameters)
+        if (drawMouse) {
+            if (view != null) {
+                windowManager.updateViewLayout(
+                    trackingView,
+                    parameters
+                ) //windowManager.removeViewImmediate(view)
+            } else {
+                windowManager.addView(trackingView, parameters)
+            }
+            view = trackingView
         }
-
-        view = trackingView
     }
 
     fun removeOverlay() {
@@ -231,6 +239,8 @@ class GestureAccessibilityService : AccessibilityService() {
     }
 
     fun click() {
+        if(!drawMouse)
+            return
         val builder = GestureDescription.Builder()
         val path = Path()
         path.moveTo(referencePoint!!.x, referencePoint!!.y + statusBarHeight)
@@ -250,16 +260,41 @@ class GestureAccessibilityService : AccessibilityService() {
             )
         ).build()
 
+        var windowManager =
+            getSystemService(AccessibilityService.WINDOW_SERVICE) as WindowManager
 
-        dispatchGesture(gesture, object : GestureResultCallback() {
-            override fun onCompleted(gestureDescription: GestureDescription) {
-                super.onCompleted(gestureDescription)
-            }
+        if (view != null) {
+            windowManager.removeViewImmediate(trackingView)
+            view = null
+            drawMouse = false
 
-            override fun onCancelled(gestureDescription: GestureDescription) {
-                super.onCancelled(gestureDescription)
-            }
-        }, null)
+            timer = Timer()
+            timer?.schedule(object : TimerTask() {
+                override fun run() {
+                    dispatchGesture(gesture, object : GestureResultCallback() {
+                        override fun onCompleted(gestureDescription: GestureDescription) {
+                            drawMouse = true
+                            super.onCompleted(gestureDescription)
+                        }
+
+                        override fun onCancelled(gestureDescription: GestureDescription) {
+                            drawMouse = true
+                            super.onCancelled(gestureDescription)
+                        }
+                    }, null)
+                }
+            }, 50)
+        } else {
+            dispatchGesture(gesture, object : GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription) {
+                    super.onCompleted(gestureDescription)
+                }
+
+                override fun onCancelled(gestureDescription: GestureDescription) {
+                    super.onCancelled(gestureDescription)
+                }
+            }, null)
+        }
     }
 
     fun executeGesture() {
