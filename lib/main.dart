@@ -66,9 +66,10 @@ class _MyHomePageState extends State<MyHomePage>
   int stateCounter = 0;
   int initStep = 0;
   int cnt = 0;
+  int gestureSpeed = 0;
 
   double aheight = 0, awidth = 0;
-  double frameRate = 30;
+  double frameRate = 60;
   double maxFrames = 10000;
   double xdif = 0, ydif = 0;
 
@@ -120,9 +121,9 @@ class _MyHomePageState extends State<MyHomePage>
   Timer? timer;
 
   Timer? appLoop;
-  int updateRate = 60; //hz
+  int updateRate = 100; //hz
 
-  double changeInterval = 0.12; //seconds
+  double cursorSpeed = 0.12; //seconds
 
   Stopwatch stopwatch = Stopwatch();
 
@@ -173,20 +174,28 @@ class _MyHomePageState extends State<MyHomePage>
                           color: Colors.black,
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        child: Column(
+                        child: ListView(
                           children: [
-                            Text(
-                              'Error',
-                              style:
-                                  TextStyle(color: Colors.white, fontSize: 30),
+                            Center(
+                              child: Text(
+                                'Error',
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 30),
+                              ),
                             ),
-                            Spacer(),
-                            Text(
-                              initError,
-                              style:
-                                  TextStyle(color: Colors.white, fontSize: 20),
+                            SizedBox(
+                              height: 30,
                             ),
-                            Spacer(),
+                            Center(
+                              child: Text(
+                                initError,
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 20),
+                              ),
+                            ),
+                            SizedBox(
+                              height: 30,
+                            ),
                             Align(
                               alignment: Alignment.bottomRight,
                               child: TextButton(
@@ -219,12 +228,68 @@ class _MyHomePageState extends State<MyHomePage>
                             ),
                           ),
                         ),
-                        MLBodyLens(
+                        SizedBox(
+                          height: aheight,
+                          width: awidth,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              //
+                              Text(
+                                "Cursor speed:",
+                                style: TextStyle(
+                                    color: Color.fromARGB(255, 12, 47, 105),
+                                    fontSize: 20),
+                              ),
+                              SizedBox(
+                                width: min(350, awidth),
+                                height: 50,
+                                child: Slider(
+                                  max: 0.24,
+                                  min: 0.05,
+                                  activeColor: Color.fromARGB(255, 12, 47, 105),
+                                  value: cursorSpeed,
+                                  onChanged: (val) {
+                                    cursorSpeed = val;
+                                  },
+                                ),
+                              ),
+                              //
+                              SizedBox(height: 50,),
+                              //
+                              Text(
+                                "Gesture speed:",
+                                style: TextStyle(
+                                    color: Color.fromARGB(255, 12, 47, 105),
+                                    fontSize: 20),
+                              ),
+                              SizedBox(
+                                width: min(350, awidth),
+                                height: 50,
+                                child: Slider(
+                                  max: 18,
+                                  min: 1,
+                                  activeColor: Color.fromARGB(255, 12, 47, 105),
+                                  value: gestureSpeed.toDouble(),
+                                  onChanged: (val) {
+                                    gestureSpeed = val.toInt();
+                                  },
+                                  onChangeEnd: (val) {
+                                    gestureSpeed = val.toInt();
+                                    service.setGestureSpeed(gestureSpeed);
+                                  },
+                                ),
+                              ),
+                              //
+                            ],
+                          ),
+                        ),
+                        /*MLBodyLens(
                           textureId: textureId,
                           //width: awidth,
                           //height: aheight,
-                        ),
-                        Align(
+                        ),*/
+                        /*Align(
                           alignment: Alignment.center,
                           child: SizedBox(
                             height: aheight,
@@ -255,7 +320,7 @@ class _MyHomePageState extends State<MyHomePage>
                               ),
                             ),
                           ),
-                        ),
+                        ),*/
                         // Text(handState.name)
                       ],
                     ),
@@ -266,29 +331,34 @@ class _MyHomePageState extends State<MyHomePage>
 
   void initApp() async {
     bool status;
+    int currentStep = 1;
     initError = "";
 
-    if (initStep < 1) {
+    if (initStep < currentStep) {
       status = await getDirectory();
       if (!status) {
         loading = false;
         setState(() {});
         return;
       }
-      initStep = 1;
+      initStep = currentStep;
     }
 
-    if (initStep < 2) {
+    currentStep++;
+
+    if (initStep < currentStep) {
       status = await getCameraPermission();
       if (!status) {
         loading = false;
         setState(() {});
         return;
       }
-      initStep = 2;
+      initStep = currentStep;
     }
 
-    if (initStep < 3) {
+    currentStep++;
+
+    if (initStep < currentStep) {
       status = await service.init(awidth, aheight);
       if (!status) {
         initError = "The service could not start";
@@ -296,10 +366,19 @@ class _MyHomePageState extends State<MyHomePage>
         setState(() {});
         return;
       }
-      initStep = 3;
+      initStep = currentStep;
     }
 
-    if (initStep < 4) {
+    currentStep++;
+
+    if (initStep < currentStep) {
+      gestureSpeed = await service.getGestureSpeed();
+      initStep = currentStep;
+    }
+
+    currentStep++;
+
+    if (initStep < currentStep) {
       status = await initStream();
       if (!status) {
         initError = "The camera stream could not start";
@@ -307,13 +386,15 @@ class _MyHomePageState extends State<MyHomePage>
         setState(() {});
         return;
       }
-      initStep = 4;
+      initStep = currentStep;
     }
 
-    if (initStep < 5) {
+    currentStep++;
+
+    if (initStep < currentStep) {
       try {
         initSketch();
-        initStep = 5;
+        initStep = currentStep;
       } catch (e) {
         initError = "The sketch could not start";
         loading = false;
@@ -322,7 +403,9 @@ class _MyHomePageState extends State<MyHomePage>
       }
     }
 
-    if (initStep < 6) {
+    currentStep++;
+
+    if (initStep < currentStep) {
       status = initTransition();
       if (!status) {
         initError = "The transition could not start";
@@ -330,8 +413,10 @@ class _MyHomePageState extends State<MyHomePage>
         setState(() {});
         return;
       }
-      initStep = 6;
+      initStep = currentStep;
     }
+
+    currentStep++;
 
     runLoop();
     loading = false;
@@ -477,149 +562,149 @@ class _MyHomePageState extends State<MyHomePage>
   }
 
   void runLoop() {
-      appLoop =
-          Timer.periodic(Duration(milliseconds: 1000 ~/ updateRate), (timer) {
+    appLoop =
+        Timer.periodic(Duration(milliseconds: 1000 ~/ updateRate), (timer) {
 //
-        if (transitionStart != null) {
-          referencePoint =
-              Offset(transitionStart!.dx + xdif, transitionStart!.dy + ydif);
-        }
-        if (referencePoint != null) {
-          service.drawHandLocation(referencePoint!, handState);
-        }
+      if (transitionStart != null) {
+        referencePoint =
+            Offset(transitionStart!.dx + xdif, transitionStart!.dy + ydif);
+      }
+      if (referencePoint != null) {
+        service.drawHandLocation(referencePoint!, handState);
+      }
 
-        switch (handState) {
-          ////
+      switch (handState) {
+        ////
 
-          case HandState.Tracking:
-            if (!hasData) {
-              handState = HandState.Unsure;
-              break;
-            }
-
-            if (isLockGesture()) {
-              handState = HandState.Locking;
-              break;
-            }
-
+        case HandState.Tracking:
+          if (!hasData) {
+            handState = HandState.Unsure;
             break;
-
-          ////
-
-          case HandState.Locking:
-            if (!hasData) {
-              handState = HandState.Unsure;
-              service.unsureState();
-              break;
-            }
-            if (stateCounter.toDouble() >=
-                transitionDuration[HandState.Press]! * updateRate) {
-              handState = HandState.Press;
-              break;
-            }
-
-            if (isFreeGesture()) {
-              handState = HandState.Tracking;
-              break;
-            }
-
-            break;
-
-          ////
-
-          case HandState.Unsure:
-            if (stateCounter.toDouble() >=
-                transitionDuration[HandState.NoData]! * updateRate) {
-              handState = HandState.NoData;
-              transitionController?.reset();
-              prevReferencePoint = null;
-              referencePoint = null;
-              transitionStart = null;
-              service.removeOverlay();
-              break;
-            }
-
-            if (hasData) {
-              handState = HandState.Tracking;
-              break;
-            }
-
-            break;
-
-          ////
-
-          case HandState.NoData:
-            if (hasData) {
-              handState = HandState.Tracking;
-              break;
-            }
-
-            break;
-
-          ////
-
-          case HandState.Press:
-            if (!hasData) {
-              service.clickScreen();
-              handState = HandState.Unsure;
-              service.unsureState();
-              break;
-            }
-
-            if (isFreeGesture()) {
-              service.clickScreen();
-              handState = HandState.Tracking;
-              break;
-            }
-
-            if (stateCounter.toDouble() >=
-                transitionDuration[HandState.Gesture]! * updateRate) {
-              handState = HandState.Gesture;
-              stopwatch.start();
-              service.setGestureStart();
-              //startingPoint = Offset(referencePoint!.dx, referencePoint!.dy);
-              break;
-            }
-
-            break;
-
-          ////
-
-          case HandState.Gesture:
-            if (!hasData) {
-              stopwatch.stop();
-              stopwatch.reset();
-              service.executeGesture();
-              handState = HandState.Unsure;
-              service.unsureState();
-              break;
-            }
-
-            if (isFreeGesture()) {
-              service.executeGesture();
-              stopwatch.stop();
-              stopwatch.reset();
-              handState = HandState.Tracking;
-              break;
-            }
-
-            break;
-        }
-
-        HandState tempState = HandState.values
-            .firstWhere((element) => element.name == handState.name);
-
-        if (prevState.name != handState.name) {
-          stateCounter = 1;
-        } else {
-          stateCounter++;
-          if (stateCounter > maxFrames) {
-            handState = HandState.NoData;
-            stateCounter = 1;
           }
+
+          if (isLockGesture()) {
+            handState = HandState.Locking;
+            break;
+          }
+
+          break;
+
+        ////
+
+        case HandState.Locking:
+          if (!hasData) {
+            handState = HandState.Unsure;
+            service.unsureState();
+            break;
+          }
+          if (stateCounter.toDouble() >=
+              transitionDuration[HandState.Press]! * updateRate) {
+            handState = HandState.Press;
+            break;
+          }
+
+          if (isFreeGesture()) {
+            handState = HandState.Tracking;
+            break;
+          }
+
+          break;
+
+        ////
+
+        case HandState.Unsure:
+          if (stateCounter.toDouble() >=
+              transitionDuration[HandState.NoData]! * updateRate) {
+            handState = HandState.NoData;
+            transitionController?.reset();
+            prevReferencePoint = null;
+            referencePoint = null;
+            transitionStart = null;
+            service.removeOverlay();
+            break;
+          }
+
+          if (hasData) {
+            handState = HandState.Tracking;
+            break;
+          }
+
+          break;
+
+        ////
+
+        case HandState.NoData:
+          if (hasData) {
+            handState = HandState.Tracking;
+            break;
+          }
+
+          break;
+
+        ////
+
+        case HandState.Press:
+          if (!hasData) {
+            service.clickScreen();
+            handState = HandState.Unsure;
+            service.unsureState();
+            break;
+          }
+
+          if (isFreeGesture()) {
+            service.clickScreen();
+            handState = HandState.Tracking;
+            break;
+          }
+
+          if (stateCounter.toDouble() >=
+              transitionDuration[HandState.Gesture]! * updateRate) {
+            handState = HandState.Gesture;
+            stopwatch.start();
+            service.setGestureStart();
+            //startingPoint = Offset(referencePoint!.dx, referencePoint!.dy);
+            break;
+          }
+
+          break;
+
+        ////
+
+        case HandState.Gesture:
+          if (!hasData) {
+            stopwatch.stop();
+            stopwatch.reset();
+            service.executeGesture();
+            handState = HandState.Unsure;
+            service.unsureState();
+            break;
+          }
+
+          if (isFreeGesture()) {
+            service.executeGesture();
+            stopwatch.stop();
+            stopwatch.reset();
+            handState = HandState.Tracking;
+            break;
+          }
+
+          break;
+      }
+
+      HandState tempState = HandState.values
+          .firstWhere((element) => element.name == handState.name);
+
+      if (prevState.name != handState.name) {
+        stateCounter = 1;
+      } else {
+        stateCounter++;
+        if (stateCounter > maxFrames) {
+          handState = HandState.NoData;
+          stateCounter = 1;
         }
-        prevState = tempState;
-      });
+      }
+      prevState = tempState;
+    });
   }
 
   void onTransaction({dynamic result}) {
@@ -748,8 +833,8 @@ class _MyHomePageState extends State<MyHomePage>
       referencePoint = Offset(x, y);
     } else {
       transitionStart = Offset(referencePoint!.dx, referencePoint!.dy);
-      xdif = (x - transitionStart!.dx) / (updateRate * changeInterval);
-      ydif = (y - transitionStart!.dy) / (updateRate * changeInterval);
+      xdif = (x - transitionStart!.dx) / (updateRate * cursorSpeed);
+      ydif = (y - transitionStart!.dy) / (updateRate * cursorSpeed);
       //setTransitionPoint(Offset(x, y));
     }
   }

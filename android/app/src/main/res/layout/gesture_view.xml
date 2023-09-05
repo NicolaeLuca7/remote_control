@@ -8,5 +8,5 @@
         android:id="@+id/gestureView"
         android:layout_width="60px"
         android:layout_height="60px"
-        android:src="@drawable/gesture_mouse" />
+        android:src="@drawable/gesture_background" />
 </FrameLayout>

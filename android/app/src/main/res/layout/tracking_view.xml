@@ -1,12 +1,19 @@
-<FrameLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:background="@android:color/transparent">
 
-    <ImageView
-        android:id="@+id/trackingView"
+    <Button
+        android:id="@+id/mouse"
+        style="?android:attr/borderlessButtonStyle"
         android:layout_width="60px"
         android:layout_height="60px"
-        android:src="@drawable/tracking_mouse" />
+        android:background="@drawable/tracking_background"
+        android:paddingBottom="5px"></Button>
+
+    <!--    <ImageView-->
+    <!--        android:id="@+id/trackingView"-->
+    <!--        android:layout_width="60px"-->
+    <!--        android:layout_height="60px"-->
+    <!--        android:src="@drawable/tracking_mouse" />-->
 </FrameLayout>

@@ -8,5 +8,5 @@
         android:id="@+id/clickView"
         android:layout_width="60px"
         android:layout_height="60px"
-        android:src="@drawable/press_mouse" />
+        android:src="@drawable/press_background" />
 </FrameLayout>

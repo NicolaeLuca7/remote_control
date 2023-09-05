@@ -3,22 +3,26 @@ package com.example.remote_control
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
-import android.animation.ValueAnimator
+import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.graphics.*
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.DrawableContainer
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
-import android.os.Looper
 import android.view.*
 import android.view.accessibility.AccessibilityEvent
-import androidx.core.view.ViewCompat.setLayerType
-import java.io.File
+import android.widget.Button
+import androidx.core.content.res.ResourcesCompat
 import java.lang.Math.PI
 import java.lang.Math.acos
 import java.lang.Math.cos
 import java.lang.Math.pow
 import java.lang.Math.sin
 import java.lang.Math.sqrt
-import java.util.Timer
+import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 
 
 @TargetApi(Build.VERSION_CODES.TIRAMISU)
@@ -26,30 +30,31 @@ class GestureAccessibilityService : AccessibilityService() {
 
     private var connected: Boolean = false
 
-    var event: AccessibilityEvent? = null
-    var view: View? = null
+    private var event: AccessibilityEvent? = null
+    private var view: View? = null
 
-    var parameters:WindowManager.LayoutParams?=null
+    private var parameters: WindowManager.LayoutParams? = null
 
-    var trackingView: View? = null
-    var pressView: View? = null
-    var gestureView: View? = null
+    private var trackingBackground: GradientDrawable? = null
+    private var trackingView: View? = null
 
-    var referencePoint: PointF? = null
-    var gestureStart: PointF = PointF(0F, 0F)
+    private var referencePoint: PointF? = null
+    private var gestureStart: PointF = PointF(0F, 0F)
 
-    var handState: HandState = HandState.NoData
+    private var handState: HandState = HandState.NoData
 
-    val gestureBackSide: Float = 20f
-    val gestureHomeSide: Float = 50f
-    var statusBarHeight: Float = 0f
-    var displayWidth: Float = 0f
-    var displayHeight: Float = 0f
+    private val gestureBackSide: Float = 20f
+    private val gestureHomeSide: Float = 50f
+    private var statusBarHeight: Float = 0f
+    private var displayWidth: Float = 0f
+    private var displayHeight: Float = 0f
 
-    var appHeight: Int = 0
-    var appWidth: Int = 0
+    private var appHeight: Int = 0
+    private var appWidth: Int = 0
 
-    var resetTimer: Timer? = null
+    private var gestureSpeed: Long = 90
+
+    private var lastUpdate: LocalDateTime? = null
 
 
     companion object {
@@ -68,18 +73,21 @@ class GestureAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(ev: AccessibilityEvent) {
         event = ev
 
-        if (view != null) {
-            try {
-                var windowManager =
-                    getSystemService(AccessibilityService.WINDOW_SERVICE) as WindowManager
-                windowManager?.removeViewImmediate(view)
-                view = null
-            } catch (e: Exception) {
+        var now = LocalDateTime.now()
+        if (ChronoUnit.MILLIS.between(lastUpdate, now) > 1000) {
+            if (view != null) {
+                try {
+                    var windowManager =
+                        getSystemService(AccessibilityService.WINDOW_SERVICE) as WindowManager
+                    windowManager?.removeViewImmediate(view)
+                    view = null
+                } catch (e: Exception) {
+                }
             }
         }
-
     }
 
+    @SuppressLint("ResourceType")
     override fun onServiceConnected() {
         this.serviceInfo.apply {
             eventTypes = AccessibilityEvent.TYPES_ALL_MASK
@@ -87,6 +95,8 @@ class GestureAccessibilityService : AccessibilityService() {
             feedbackType = AccessibilityServiceInfo.FEEDBACK_SPOKEN
             notificationTimeout = 100
         }
+
+        lastUpdate = LocalDateTime.now()
 
         var windowManager =
             getSystemService(WINDOW_SERVICE) as WindowManager
@@ -114,11 +124,16 @@ class GestureAccessibilityService : AccessibilityService() {
         trackingView = LayoutInflater.from(this)
             .inflate(com.example.remote_control.R.layout.tracking_view, null)
 
-        pressView = LayoutInflater.from(this)
-            .inflate(com.example.remote_control.R.layout.press_view, null)
+        var mouse = trackingView?.findViewById<Button>(com.example.remote_control.R.id.mouse)
 
-        gestureView = LayoutInflater.from(this)
-            .inflate(com.example.remote_control.R.layout.gesture_view, null)
+        var drawableRes: Drawable? = mouse?.background
+
+        val drawableContainerState: DrawableContainer.DrawableContainerState =
+            drawableRes?.constantState as DrawableContainer.DrawableContainerState
+
+        val children: Array<Drawable> = drawableContainerState.children
+
+        trackingBackground = children[0] as GradientDrawable
 
         connected = true
 
@@ -140,7 +155,14 @@ class GestureAccessibilityService : AccessibilityService() {
     fun setAppSizes(width: Int, height: Int) {
         appWidth = width
         appHeight = height
+    }
 
+    fun setGestureSpeed(speed: Long) {
+        gestureSpeed = speed * 10
+    }
+
+    fun getGestureSpeed(): Long {
+        return gestureSpeed / 10
     }
 
     fun convertX(x: Float): Float {
@@ -167,33 +189,33 @@ class GestureAccessibilityService : AccessibilityService() {
     }
 
     fun drawOverlay() {
+        lastUpdate = LocalDateTime.now()
+
         var windowManager =
             getSystemService(AccessibilityService.WINDOW_SERVICE) as WindowManager
 
         parameters!!.x = (referencePoint!!.x - displayWidth / 2).toInt()
         parameters!!.y = (referencePoint!!.y - displayHeight / 2).toInt()
 
-        var newView:View
 
         if (handState == HandState.Press) {
-            newView=pressView!!
+            trackingBackground?.setColor(Color.parseColor("#CC41B74D"))
         } else if (handState == HandState.Gesture) {
-            newView=gestureView!!
-        }
-        else{
-            newView=trackingView!!
+            trackingBackground?.setColor(Color.parseColor("#CC167DD0"))
+        } else { //Just Tracking
+            trackingBackground?.setColor(Color.parseColor("#CCdbdad5"))
         }
 
         if (view != null) {
             windowManager.updateViewLayout(
-                newView,
+                trackingView,
                 parameters
             ) //windowManager.removeViewImmediate(view)
         } else {
-            windowManager.addView(newView, parameters)
+            windowManager.addView(trackingView, parameters)
         }
 
-        view = newView
+        view = trackingView
     }
 
     fun removeOverlay() {
@@ -213,7 +235,7 @@ class GestureAccessibilityService : AccessibilityService() {
         val path = Path()
         path.moveTo(referencePoint!!.x, referencePoint!!.y + statusBarHeight)
 
-        val duration = 1L // 0.001 second, for just click
+        val duration = 1L // 0.001 seconds, for just click
 
         var displayId = event?.displayId
 
@@ -259,7 +281,7 @@ class GestureAccessibilityService : AccessibilityService() {
 
         var displayId = event?.displayId
         var sc = SurfaceControl.CREATOR
-        var duration = 30L;
+        var duration = gestureSpeed
 
         val gesture = builder.addStroke(
             GestureDescription.StrokeDescription(

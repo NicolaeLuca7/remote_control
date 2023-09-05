@@ -2,9 +2,7 @@
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="oval">
-<!--            <stroke android:color="#dbdad5" android:width="5dp"/>-->
-            <solid android:color="#CCdbdad5"/>
-            <size android:width="60px" android:height="60px"/>
+            <solid android:id="@+id/tracking_background" android:color="#CCdbdad5" />
         </shape>
     </item>
 </selector>

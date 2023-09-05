@@ -24,6 +24,24 @@ class AccessService {
     return true;
   }
 
+  Future<void> setGestureSpeed(int speed) async{
+    try{
+      await platform.invokeMethod("setGestureSpeed",[speed]);
+    }
+    catch(e){
+      int i=0;
+    }
+  }
+
+  Future<int> getGestureSpeed() async{
+    try{
+      return 19-(await platform.invokeMethod("getGestureSpeed")??1);
+    }
+    catch(e){
+      return 18;
+    }
+  }
+
   Future<void> stop() async {
     _on = false;
     try {
