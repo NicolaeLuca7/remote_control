@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_accessibility_service/accessibility_event.dart';
 import 'package:flutter_accessibility_service/flutter_accessibility_service.dart';
-import 'package:flutter_processing/flutter_processing.dart';
+//import 'package:flutter_processing/flutter_processing.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:huawei_ml_body/huawei_ml_body.dart';
 import 'package:path_provider/path_provider.dart';
@@ -16,7 +16,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:remote_control/HandBorders.dart';
 import 'package:remote_control/HandState.dart';
 import 'package:remote_control/AccessService.dart';
-import 'package:workmanager/workmanager.dart';
+import 'package:remote_control/customButton.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'MyPainter.dart';
 
@@ -91,7 +92,10 @@ class _MyHomePageState extends State<MyHomePage>
   bool loading = true;
   bool hasData = false;
 
-  bool updatePoint=true;
+  bool updatePoint = true;
+
+  bool guideFollowed = false;
+  bool presentApp = false;
 
   InputImageRotation? rotation;
 
@@ -116,7 +120,7 @@ class _MyHomePageState extends State<MyHomePage>
 
   final keyCustomPaint = GlobalKey();
 
-  late Sketch sketch;
+  //late Sketch sketch;
 
   late Directory appDocDir;
 
@@ -129,9 +133,44 @@ class _MyHomePageState extends State<MyHomePage>
 
   Stopwatch stopwatch = Stopwatch();
 
+  SharedPreferences? prefs;
+
+  Color blackColor = Color.fromARGB(255, 40, 43, 48);
+  Color accentColor = Colors.deepPurple;
+
+  List<String> textList1 = [
+    ''' ● The app is based on an accessibility service. 
+Please make sure you give the app the permissions it needs.''',
+    ''' ● When opening the app you will be prompted to turn on the accessibility service and give camera access.''',
+    ''' ● The service will work as long as you have the app opened in the background.''',
+    ''' ● To preserve battery life turn off the service after each use.''',
+    ''' ● To turn the service on/off go to: Settings -> Accessibility -> Installed apps -> Remote Control''',
+    ''' ● In the case of another app accessing the camera, the app will stop. However the accessibility service will continue to run.''',
+    ''' ● In the case of the app stopping and the pointer remaining stuck on the screen, turn the accessibility service off.''',
+    ''' ● Currently the app only works for portrait orientation.''',
+  ];
+
+  List<String> textList2 = [
+    ''' ● The screen pointer is controlled by the movements of the hand that is parallel to the screen.
+For the best performance the hand needs to be around 25 cm away from the screen.
+Performance may vary from the lighting conditions.''',
+    ''' ● For just tracking keep the hand opened.''',
+    ''' ● To enter the gesture state slightly close the hand.
+Once the pointer becomes green you are in the click state. Opening the hand in this state will trigger a click in the pointer's location.''',
+    ''' ● If you keep the hand closed, the service will shift to the continuous gesture state, represented by a blue pointer.
+Opening the hand in this state will trigger a swipe between the pointer's location where the state started and the last location.'''
+    //''' ● ''',
+  ];
+
+  int guideScreen = 0;
+
   @override
   void initState() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.portraitUp,
+    ]);
     initApp();
     super.initState();
   }
@@ -160,6 +199,7 @@ class _MyHomePageState extends State<MyHomePage>
         }
       },
       child: Scaffold(
+        backgroundColor: blackColor,
         body: Container(
           child: loading
               ? Center(
@@ -202,6 +242,7 @@ class _MyHomePageState extends State<MyHomePage>
                               alignment: Alignment.bottomRight,
                               child: TextButton(
                                 onPressed: () {
+                                  guideScreen=0;
                                   loading = true;
                                   setState(() {});
                                   initApp();
@@ -217,81 +258,119 @@ class _MyHomePageState extends State<MyHomePage>
                         ),
                       ),
                     )
-                  : Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Align(
+                  : presentApp
+                      ? getGuideScreen()
+                      : Stack(
                           alignment: Alignment.center,
-                          child: SizedBox(
-                            height: aheight,
-                            width: awidth,
-                            child: Processing(
-                              sketch: sketch,
+                          children: [
+                            /*Align(
+                              alignment: Alignment.center,
+                              child: SizedBox(
+                                height: aheight,
+                                width: awidth,
+                                child: Processing(
+                                  sketch: sketch,
+                                ),
+                              ),
+                            ),*/
+                            Container(
+                              color: blackColor,
+                              height: aheight,
+                              width: awidth,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.start,
+                                children: [
+                                  //
+                                  SizedBox(
+                                    height: 20,
+                                  ),
+                                  //
+                                  SizedBox(
+                                    width: awidth,
+                                    height: 40,
+                                    child: Row(
+                                      children: [
+                                        Spacer(),
+                                        IconButton(
+                                          tooltip: "Instructions",
+                                          onPressed: () {
+                                            guideScreen=0;
+                                            service.removeOverlay();
+                                            service.pause();
+                                            presentApp=true;
+                                            setState(() {});
+                                          },
+                                          icon: Icon(
+                                            Icons.info_outline_rounded,
+                                            color: accentColor,
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: 20,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  //
+                                  Spacer(),
+                                  //
+                                  Text(
+                                    "Cursor speed:",
+                                    style: TextStyle(
+                                        color: accentColor, fontSize: 20),
+                                  ),
+                                  SizedBox(
+                                    width: min(350, awidth),
+                                    height: 50,
+                                    child: Slider(
+                                      max: 0.24,
+                                      min: 0.05,
+                                      activeColor: accentColor,
+                                      value:(0.24 - cursorSpeed).clamp(0.05, 0.24),
+                                      onChanged: (val) {
+                                        cursorSpeed = 0.24 - val;
+                                      },
+                                    ),
+                                  ),
+                                  //
+                                  SizedBox(
+                                    height: 50,
+                                  ),
+                                  //
+                                  Text(
+                                    "Gesture speed:",
+                                    style: TextStyle(
+                                        color: accentColor, fontSize: 20),
+                                  ),
+                                  SizedBox(
+                                    width: min(350, awidth),
+                                    height: 50,
+                                    child: Slider(
+                                      max: 18,
+                                      min: 1,
+                                      activeColor: accentColor,
+                                      value: (18 - gestureSpeed.toDouble()).clamp(1, 18),
+                                      onChanged: (val) {
+                                        gestureSpeed = 18 - val.toInt();
+                                      },
+                                      onChangeEnd: (val) {
+                                        gestureSpeed = 18 - val.toInt();
+                                        service.setGestureSpeed(gestureSpeed);
+                                      },
+                                    ),
+                                  ),
+                                  //
+                                  Spacer(),
+                                  //
+                                ],
+                              ),
                             ),
-                          ),
-                        ),
-                        SizedBox(
-                          height: aheight,
-                          width: awidth,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              //
-                              Text(
-                                "Cursor speed:",
-                                style: TextStyle(
-                                    color: Color.fromARGB(255, 12, 47, 105),
-                                    fontSize: 20),
-                              ),
-                              SizedBox(
-                                width: min(350, awidth),
-                                height: 50,
-                                child: Slider(
-                                  max: 0.24,
-                                  min: 0.05,
-                                  activeColor: Color.fromARGB(255, 12, 47, 105),
-                                  value: 0.24-cursorSpeed,
-                                  onChanged: (val) {
-                                    cursorSpeed =0.24- val;
-                                  },
-                                ),
-                              ),
-                              //
-                              SizedBox(height: 50,),
-                              //
-                              Text(
-                                "Gesture speed:",
-                                style: TextStyle(
-                                    color: Color.fromARGB(255, 12, 47, 105),
-                                    fontSize: 20),
-                              ),
-                              SizedBox(
-                                width: min(350, awidth),
-                                height: 50,
-                                child: Slider(
-                                  max: 18,
-                                  min: 1,
-                                  activeColor: Color.fromARGB(255, 12, 47, 105),
-                                  value: gestureSpeed.toDouble(),
-                                  onChanged: (val) {
-                                    gestureSpeed = val.toInt();
-                                  },
-                                  onChangeEnd: (val) {
-                                    gestureSpeed = val.toInt();
-                                    service.setGestureSpeed(gestureSpeed);
-                                  },
-                                ),
-                              ),
-                              //
-                            ],
-                          ),
-                        ),
-                        /*MLBodyLens(
+                            /*MLBodyLens(
                           textureId: textureId,
                           //width: awidth,
                           //height: aheight,
                         ),*/
-                        /*Align(
+                            /*Align(
                           alignment: Alignment.center,
                           child: SizedBox(
                             height: aheight,
@@ -323,18 +402,38 @@ class _MyHomePageState extends State<MyHomePage>
                             ),
                           ),
                         ),*/
-                        // Text(handState.name)
-                      ],
-                    ),
+                            // Text(handState.name)
+                          ],
+                        ),
         ),
       ),
     );
   }
 
+
   void initApp() async {
     bool status;
     int currentStep = 1;
     initError = "";
+
+    if (initStep < currentStep) {
+      status = await initPreferences();
+      if (!status) {
+        initError = "The service could not start";
+        loading = false;
+        setState(() {});
+        return;
+      }
+      initStep = currentStep;
+    }
+    if (!guideFollowed) {
+      presentApp = true;
+      loading = false;
+      setState(() {});
+      return;
+    }
+
+    currentStep++;
 
     if (initStep < currentStep) {
       status = await getDirectory();
@@ -425,6 +524,23 @@ class _MyHomePageState extends State<MyHomePage>
     setState(() {});
   }
 
+  Future<bool> initPreferences() async {
+    try {
+      prefs = await SharedPreferences.getInstance();
+      if (prefs == null) {
+        return false;
+      }
+      dynamic state = prefs!.get("guideFollowed");
+      if (state == null) {
+        state = false;
+      }
+      guideFollowed = state;
+    } catch (e) {
+      return false;
+    }
+    return true;
+  }
+
   Future<bool> getCameraPermission() async {
     var status = await Permission.camera.status;
     if (status.isRestricted) {
@@ -497,7 +613,7 @@ class _MyHomePageState extends State<MyHomePage>
   }
 
   void initSketch() {
-    sketch = Sketch.simple(
+    /*sketch = Sketch.simple(
       setup: (sketch) async {
         sketch.size(width: awidth.toInt() + 1, height: aheight.toInt() + 1);
         sketch.background(color: Colors.white);
@@ -543,7 +659,7 @@ class _MyHomePageState extends State<MyHomePage>
           prevReferencePoint = Offset(referencePoint!.dx, referencePoint!.dy);
         }
       },
-    );
+    );*/
   }
 
   bool initTransition() {
@@ -561,6 +677,168 @@ class _MyHomePageState extends State<MyHomePage>
       return false;
     }
     return true;
+  }
+
+
+  void markGuide() async {
+    guideFollowed = true;
+    presentApp = false;
+    await prefs?.setBool('guideFollowed', guideFollowed);
+  }
+
+  Widget getGuideScreen() {
+    return Container(
+        height: aheight,
+        width: awidth,
+        color: blackColor,
+        child: guideScreen == 0
+            ? ListView(
+                children: [
+                  SizedBox(
+                    height: 30,
+                  ),
+                  Padding(
+                    padding: EdgeInsets.only(left: 20),
+                    child: Text(
+                      "Instructions",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 35,
+                        fontWeight: FontWeight.w300,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    height: 55,
+                  ),
+                  for (String text in textList1)
+                    Padding(
+                      padding: EdgeInsets.only(
+                          left: 30, top: 5, bottom: 5, right: 10),
+                      child: Text(
+                        text,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w300,
+                        ),
+                      ),
+                    ),
+                  SizedBox(
+                    height: 40,
+                  ),
+                  SizedBox(
+                    height: 70,
+                    width: awidth,
+                    child: Row(
+                      children: [
+                        Spacer(),
+                        CustomButton(
+                            widget: Text(
+                              "Next",
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 25),
+                            ),
+                            backgroundColors: [Colors.deepPurple],
+                            shadowColor: blackColor,
+                            blurRadius: 3,
+                            width: 90,
+                            height: 50,
+                            borderRadius: BorderRadius.circular(10),
+                            onPressed: () {
+                              guideScreen++;
+                              setState(() {});
+                            },
+                            activated: true),
+                        SizedBox(
+                          width: 20,
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    height: 20,
+                  ),
+                ],
+              )
+            : ListView(
+                controller: ScrollController(),
+                children: [
+                  SizedBox(
+                    height: 30,
+                  ),
+                  Padding(
+                    padding: EdgeInsets.only(left: 20),
+                    child: Text(
+                      "How to use",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 35,
+                        fontWeight: FontWeight.w300,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    height: 55,
+                  ),
+                  for (String text in textList2)
+                    Padding(
+                      padding: EdgeInsets.only(
+                          left: 30, top: 5, bottom: 5, right: 10),
+                      child: Text(
+                        text,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w300,
+                        ),
+                      ),
+                    ),
+                  SizedBox(
+                    height: 40,
+                  ),
+                  SizedBox(
+                    height: 70,
+                    width: awidth,
+                    child: Row(
+                      children: [
+                        Spacer(),
+                        CustomButton(
+                          widget: Text(
+                            "Start",
+                            style: TextStyle(color: Colors.white, fontSize: 25),
+                          ),
+                          backgroundColors: [Colors.deepPurple],
+                          shadowColor: blackColor,
+                          blurRadius: 3,
+                          width: 90,
+                          height: 50,
+                          borderRadius: BorderRadius.circular(10),
+                          activated: true,
+                          onPressed: () {
+                            if (!guideFollowed) {
+                              markGuide();
+                              loading = true;
+                              setState(() {});
+                              initApp();
+                            } else {
+                              presentApp = false;
+                              service.resume();
+                              setState(() {});
+                            }
+                          },
+                        ),
+                        SizedBox(
+                          width: 20,
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    height: 20,
+                  ),
+                ],
+              ));
   }
 
   void runLoop() {
@@ -713,10 +991,10 @@ class _MyHomePageState extends State<MyHomePage>
     });
   }
 
-  void startTimeout(){
-    updatePoint=false;
-    var timeout=Timer(Duration(milliseconds: 200),(){
-      updatePoint=true;
+  void startTimeout() {
+    updatePoint = false;
+    var timeout = Timer(Duration(milliseconds: 200), () {
+      updatePoint = true;
     });
   }
 
@@ -733,7 +1011,7 @@ class _MyHomePageState extends State<MyHomePage>
 
     if (result.length == 0 || result[0].handKeyPoints.length != 21) {
     } else {
-      if(updatePoint) {
+      if (updatePoint) {
         computeData(result);
         hasData = true;
       }

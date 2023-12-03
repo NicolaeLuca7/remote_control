@@ -28,7 +28,6 @@ import java.util.Timer
 import java.util.TimerTask
 
 
-@TargetApi(Build.VERSION_CODES.TIRAMISU)
 class GestureAccessibilityService : AccessibilityService() {
 
     private var connected: Boolean = false

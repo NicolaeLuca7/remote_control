@@ -42,6 +42,14 @@ class AccessService {
     }
   }
 
+  void pause(){
+    _on=false;
+  }
+
+  void resume(){
+    _on=true;
+  }
+
   Future<void> stop() async {
     _on = false;
     try {

@@ -1,0 +1,1 @@
+enum ShadowState { In, Out }

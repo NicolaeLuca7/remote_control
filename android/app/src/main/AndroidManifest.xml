@@ -2,8 +2,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <application
-        android:icon="@mipmap/ic_launcher"
-        android:label="remote_control">
+        android:icon="@mipmap/app_icon"
+        android:label="Remote Control">
         <service
             android:name=".GestureAccessibilityService"
             android:exported="false"
